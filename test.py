@@ -655,7 +655,7 @@ def take_screenshot(url, output_path, browser_type, full_page, executable_path=N
         else:
             browser = p.chromium.launch(headless=True)
         
-        context = browser.new_context()
+        context = browser.new_context(viewport={"width": 1920, "height": 1080})
         page = context.new_page()
         page.goto(url, timeout=180000)
 
