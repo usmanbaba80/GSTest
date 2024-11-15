@@ -747,6 +747,7 @@ def extract_links(page):
         }));
     }''')
 
+
 def store_slices_in_db(url, output_path, slices, links):
     connection = pymysql.connect(
         host='alldbserver.mysql.database.azure.com',
@@ -762,8 +763,11 @@ def store_slices_in_db(url, output_path, slices, links):
             sql = "INSERT INTO screenshots (url, output_path, slices, links) VALUES (%s, %s, %s, %s)"
             cursor.execute(sql, (url, output_path, json.dumps(slices), json.dumps(links)))
         connection.commit()
+    except pymysql.MySQLError as e:
+        print(f"Error: {e}")
     finally:
         connection.close()
+
 
 def check_existing_entry(url):
     connection = pymysql.connect(
@@ -790,11 +794,47 @@ def check_existing_entry(url):
     finally:
         connection.close()
 
+def get_links_from_db(url):
+    connection = pymysql.connect(
+        host='alldbserver.mysql.database.azure.com',
+        user='u.s',
+        password='&!ALvg4ty5g9s&N',
+        database='devtest',
+        ssl={
+            'ca': 'DigiCertGlobalRootCA.crt 1.pem'
+        }
+    )
+    try:
+        with connection.cursor() as cursor:
+            sql = "SELECT links FROM screenshots WHERE url=%s"
+            cursor.execute(sql, (url,))
+            result = cursor.fetchone()
+            if result:
+                # Parse the JSON string back into a Python object
+                links = json.loads(result[0])
+                return {
+                    "links": links
+                }
+            return None
+    finally:
+        connection.close()
+
+
 @app.get("/slice/")
 def get_slice(path: str):
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="Slice not found")
     return FileResponse(path)
+
+@app.get("/links/")
+def get_links(url: str):
+    try: 
+        
+        return get_links_from_db(url)
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 
