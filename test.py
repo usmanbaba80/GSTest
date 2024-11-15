@@ -730,7 +730,8 @@ def create_screenshot(request: ScreenshotRequest):
         # Store the slices in the database
         store_slices_in_db(request.url, output_path, slices, links)
         
-        return {"message": "Screenshot taken successfully", "path": output_path, "slices": slices, "links": links}
+        return {"message": "Screenshot taken successfully", "path": output_path, "slices": slices}
+        # , "links": links
     except Exception as e:
         print(f"An error occurred: {e}")
         raise HTTPException(status_code=500, detail=str(e))
