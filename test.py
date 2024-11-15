@@ -637,8 +637,8 @@ if sys.platform.startswith('win'):
 
 class ScreenshotRequest(BaseModel):
     url: str
-    output_base_path: str
-    browser_type: str
+    output_base_path: str = 'c:/screenshots/'
+    browser_type: str = 'chromium'
     full_page: bool = True
     executable_path: str = None
 
@@ -646,8 +646,8 @@ app = FastAPI()
 
 def take_screenshot(url, output_path, browser_type, full_page, executable_path=None):
     with sync_playwright() as p:
-        if browser_type == "chromium" and executable_path:
-            browser = p.chromium.launch(executable_path=executable_path, headless=True)
+        if browser_type == "chromium":
+            browser = p.chromium.launch(headless=True)
         elif browser_type == "firefox":
             browser = p.firefox.launch(headless=True)
         elif browser_type == "webkit":
@@ -687,7 +687,7 @@ def take_large_screenshot(page, dimensions, output_path):
     temp_image_paths = []
 
     for y in range(0, scroll_height, viewport_height):
-        print("hello1")
+        # print("hello1")
         for x in range(0, scroll_width, viewport_width):
             unique_id = uuid.uuid4().hex
             page.evaluate(f'window.scrollTo({x}, {y})')
@@ -696,12 +696,12 @@ def take_large_screenshot(page, dimensions, output_path):
             temp_image_path = f'{output_path}{unique_id}_{x}_{y}.png'
             page.screenshot(path=temp_image_path, clip={'x': 0, 'y': 0, 'width': clip_width, 'height': clip_height})
             temp_image_paths.append(temp_image_path)
-        print("hello12")
+        # print("hello12")
     for temp_image_path in temp_image_paths:
         temp_image = Image.open(temp_image_path)
         x, y = map(int, temp_image_path.replace(output_path, '').replace('.png', '').split('_')[1:])
         stitch_image.paste(temp_image, (x, y))
-    print("hello3")
+    # print("hello3")
 
     stitch_image.save(output_path)
     print(f"Large screenshot saved at {output_path}")
@@ -712,6 +712,7 @@ def create_screenshot(request: ScreenshotRequest):
     start_time = time.time()
     try:
         # Check if the URL already exists in the database
+        ExistingCheckTime = time.time()
         existing_entry = check_existing_entry(request.url)
         if existing_entry:
             return {
@@ -720,11 +721,11 @@ def create_screenshot(request: ScreenshotRequest):
                 "slices": json.loads(existing_entry['slices']),
                 "links": existing_entry['links']
             }
-        
+        print("Existing Check Time: ", time.time() - ExistingCheckTime)
         output_path = os.path.join(request.output_base_path, "screenshot.png")
         links, slices = take_screenshot(request.url, output_path, request.browser_type, request.full_page, request.executable_path)
         elapsed_time = time.time() - start_time
-        print(elapsed_time)
+        print("Try bLock Check time : ",elapsed_time)
         
         # Store the slices in the database
         store_slices_in_db(request.url, output_path, slices, links)
@@ -735,7 +736,7 @@ def create_screenshot(request: ScreenshotRequest):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         elapsed_time = time.time() - start_time
-        print(elapsed_time)
+        print("Finally bLock Check time : ",elapsed_time)
 
 def extract_links(page):
     return page.evaluate('''() => {
