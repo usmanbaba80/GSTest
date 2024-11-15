@@ -719,7 +719,7 @@ def create_screenshot(request: ScreenshotRequest):
                 "message": "Screenshot already exists",
                 "path": existing_entry['output_path'],
                 "slices": json.loads(existing_entry['slices']),
-                "links": existing_entry['links']
+                # "links": existing_entry['links']
             }
         print("Existing Check Time: ", time.time() - ExistingCheckTime)
         output_path = os.path.join(request.output_base_path, "screenshot.png")
