@@ -872,13 +872,13 @@ app = FastAPI()
 async def take_screenshot(url, output_path, browser_type, full_page, executable_path=None):
     async with async_playwright() as p:
         if browser_type == "chromium":
-            browser = await p.chromium.launch(headless=True, executable_path=executable_path)
+            browser = await p.chromium.launch(headless=True)
         elif browser_type == "firefox":
-            browser = await p.firefox.launch(headless=True, executable_path=executable_path)
+            browser = await p.firefox.launch(headless=True)
         elif browser_type == "webkit":
-            browser = await p.webkit.launch(headless=True, executable_path=executable_path)
+            browser = await p.webkit.launch(headless=True)
         else:
-            browser = await p.chromium.launch(headless=True, executable_path=executable_path)
+            browser = await p.chromium.launch(headless=True)
         
         context = await browser.new_context(viewport={"width": 1920, "height": 1080})
         page = await context.new_page()
