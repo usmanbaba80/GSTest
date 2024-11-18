@@ -883,7 +883,7 @@ async def take_screenshot(url, output_path, browser_type, full_page, executable_
         context = await browser.new_context(viewport={"width": 1920, "height": 1080})
         page = await context.new_page()
         await page.goto(url, timeout=180000)
-        # await page.wait_for_load_state('networkidle')
+        await page.wait_for_load_state('networkidle')
 
         # Extract links
         links = await extract_links(page)
