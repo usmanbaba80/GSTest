@@ -842,6 +842,250 @@
 ################################### Next version Code ##############################################
 
 
+# import asyncio
+# import sys
+# from fastapi import FastAPI, HTTPException
+# from fastapi.responses import FileResponse
+# from pydantic import BaseModel
+# from playwright.async_api import async_playwright
+# import os
+# import time
+# import json
+# import cv2
+# from PIL import Image
+# import pymysql
+# import uuid
+
+# # Set WindowsProactorEventLoopPolicy if on Windows
+# if sys.platform.startswith('win'):
+#     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+# class ScreenshotRequest(BaseModel):
+#     url: str
+#     output_base_path: str = 'c:/screenshots/'
+#     browser_type: str = 'chromium'
+#     full_page: bool = True
+#     executable_path: str = None
+
+# app = FastAPI()
+
+# async def take_screenshot(url, output_path, browser_type, full_page, executable_path=None):
+#     async with async_playwright() as p:
+#         if browser_type == "chromium":
+#             browser = await p.chromium.launch(headless=True)
+#         elif browser_type == "firefox":
+#             browser = await p.firefox.launch(headless=True)
+#         elif browser_type == "webkit":
+#             browser = await p.webkit.launch(headless=True)
+#         else:
+#             browser = await p.chromium.launch(headless=True)
+        
+#         context = await browser.new_context(viewport={"width": 1920, "height": 1080})
+#         page = await context.new_page()
+#         await page.goto(url, timeout=180000)
+#         await page.wait_for_load_state('networkidle')
+
+#         # Extract links
+#         links = await extract_links(page)
+        
+#         dimensions = await page.evaluate('''() => {
+#             return {
+#                 width: document.documentElement.scrollWidth,
+#                 height: document.documentElement.scrollHeight
+#             }
+#         }''')
+
+#         if full_page and (dimensions['width'] > 32767 or dimensions['height'] > 32767):
+#             output_path = await take_large_screenshot(page, dimensions, output_path)
+#         else:
+#             await page.screenshot(path=output_path, full_page=full_page, timeout=180000)
+#             output_path = slice_and_stretch_image(output_path, "c:/screenshots/")
+#             print(f"Screenshot saved at {output_path[0]}")
+
+#         await browser.close()
+#         return links, output_path[1] 
+
+# def slice_and_stretch_image(image_path, output_folder):
+#     image = cv2.imread(image_path)
+#     height, width, _ = image.shape
+#     slice_width = 1920
+#     slice_height = 1080
+    
+#     if not os.path.exists(output_folder):
+#         os.makedirs(output_folder)
+#     temp_image_paths = []
+#     slice_count = 1
+
+#     for y in range(0, height, slice_height):
+#         for x in range(0, width, slice_width):
+#             unique_id = uuid.uuid4().hex
+#             end_x = min(x + slice_width, width)
+#             end_y = min(y + slice_height, height)
+#             temp_image_path = f'{output_folder}{unique_id}_{end_x}_{end_y}.png'
+#             # Crop the image slice
+#             cropped_slice = image[y:end_y, x:end_x]
+            
+#             if cropped_slice.shape[1] != slice_width:
+#                 cropped_slice = cv2.resize(cropped_slice, (slice_width, cropped_slice.shape[0]), interpolation=cv2.INTER_LINEAR)
+            
+#             slice_filename = temp_image_path
+#             cv2.imwrite(slice_filename, cropped_slice, [cv2.IMWRITE_JPEG_QUALITY, 30])
+#             print(f"Saved stretched slice: {slice_filename}")
+#             temp_image_paths.append(temp_image_path)
+            
+#             slice_count += 1
+#     return [output_folder, temp_image_paths]
+
+# async def take_large_screenshot(page, dimensions, output_path):
+#     scroll_width = dimensions['width']
+#     scroll_height = dimensions['height']
+#     viewport_width = min(page.viewport_size['width'], 32767)
+#     viewport_height = min(page.viewport_size['height'], 32767)
+#     stitch_image = Image.new('RGB', (scroll_width, scroll_height))
+#     temp_image_paths = []
+
+#     for y in range(0, scroll_height, viewport_height):
+#         for x in range(0, scroll_width, viewport_width):
+#             unique_id = uuid.uuid4().hex
+#             await page.evaluate(f'window.scrollTo({x}, {y})')
+#             clip_width = min(viewport_width, scroll_width - x)
+#             clip_height = min(viewport_height, scroll_height - y)
+#             temp_image_path = f'{output_path}{unique_id}_{x}_{y}.png'
+#             await page.screenshot(path=temp_image_path, clip={'x': 0, 'y': 0, 'width': clip_width, 'height': clip_height})
+#             temp_image_paths.append(temp_image_path)
+            
+#     for temp_image_path in temp_image_paths:
+#         temp_image = Image.open(temp_image_path)
+#         x, y = map(int, temp_image_path.replace(output_path, '').replace('.png', '').split('_')[1:])
+#         stitch_image.paste(temp_image, (x, y))
+        
+#     stitch_image.save(output_path)
+#     print(f"Large screenshot saved at {output_path}")
+#     return [output_path, temp_image_paths]
+
+# @app.post("/screenshot/")
+# async def create_screenshot(request: ScreenshotRequest):
+#     start_time = time.time()
+#     try:
+#         # Check if the URL already exists in the database
+#         ExistingCheckTime = time.time()
+#         existing_entry = check_existing_entry(request.url)
+#         if existing_entry:
+#             return {
+#                 "message": "Screenshot already exists",
+#                 "path": existing_entry['output_path'],
+#                 "slices": json.loads(existing_entry['slices'])
+#             }
+#         print("Existing Check Time: ", time.time() - ExistingCheckTime)
+#         output_path = os.path.join(request.output_base_path, "screenshot.png")
+#         links, slices = await take_screenshot(request.url, output_path, request.browser_type, request.full_page, request.executable_path)
+#         elapsed_time = time.time() - start_time
+#         print("Try bLock Check time : ",elapsed_time)
+        
+#         # Store the slices in the database
+#         store_slices_in_db(request.url, output_path, slices, links)
+        
+#         return {"message": "Screenshot taken successfully", "path": output_path, "slices": slices}
+#     except Exception as e:
+#         print(f"An error occurred: {e}")
+#         raise HTTPException(status_code=500, detail=str(e))
+#     finally:
+#         elapsed_time = time.time() - start_time
+#         print("Finally bLock Check time : ",elapsed_time)
+
+# async def extract_links(page):
+#     return await page.evaluate('''() => {
+#         return Array.from(document.querySelectorAll('a')).map(a => ({
+#             href: a.href,
+#             text: a.innerText
+#         }));
+#     }''')
+
+# def store_slices_in_db(url, output_path, slices, links):
+#     connection = pymysql.connect(
+#         host='alldbserver.mysql.database.azure.com',
+#         user='u.s',
+#         password='&!ALvg4ty5g9s&N',
+#         database='devtest',
+#         ssl={
+#             'ca': 'DigiCertGlobalRootCA.crt 1.pem'
+#         }
+#     )
+#     try:
+#         with connection.cursor() as cursor:
+#             sql = "INSERT INTO screenshots (url, output_path, slices, links) VALUES (%s, %s, %s, %s)"
+#             cursor.execute(sql, (url, output_path, json.dumps(slices), json.dumps(links)))
+#         connection.commit()
+#     except pymysql.MySQLError as e:
+#         print(f"Error: {e}")
+#     finally:
+#         connection.close()
+
+# def check_existing_entry(url):
+#     connection = pymysql.connect(
+#         host='alldbserver.mysql.database.azure.com',
+#         user='u.s',
+#         password='&!ALvg4ty5g9s&N',
+#         database='devtest',
+#         ssl={
+#             'ca': 'DigiCertGlobalRootCA.crt 1.pem'
+#         }
+#     )
+#     try:
+#         with connection.cursor() as cursor:
+#             sql = "SELECT output_path, slices, links FROM screenshots WHERE url=%s"
+#             cursor.execute(sql, (url,))
+#             result = cursor.fetchone()
+#             if result:
+#                 return {
+#                     "output_path": result[0],
+#                     "slices": result[1],
+#                     "links": result[2]
+#                 }
+#             return None
+#     finally:
+#         connection.close()
+
+# def get_links_from_db(url):
+#     connection = pymysql.connect(
+#         host='alldbserver.mysql.database.azure.com',
+#         user='u.s',
+#         password='&!ALvg4ty5g9s&N',
+#         database='devtest',
+#         ssl={
+#             'ca': 'DigiCertGlobalRootCA.crt 1.pem'
+#         }
+#     )
+#     try:
+#         with connection.cursor() as cursor:
+#             sql = "SELECT links FROM screenshots WHERE url=%s"
+#             cursor.execute(sql, (url,))
+#             result = cursor.fetchone()
+#             if result:
+#                 # Parse the JSON string back into a Python object
+#                 links = json.loads(result[0])
+#                 return {
+#                     "links": links
+#                 }
+#             return None
+#     finally:
+#         connection.close()
+
+# @app.get("/slice/")
+# def get_slice(path: str):
+#     if not os.path.exists(path):
+#         raise HTTPException(status_code=404, detail="Slice not found")
+#     return FileResponse(path)
+
+# @app.get("/links/")
+# def get_links(url: str):
+#     try: 
+#         return get_links_from_db(url)
+#     except Exception as e:
+#         print(f"An error occurred: {e}")
+#         raise HTTPException(status_code=500, detail=str(e))
+
+
 import asyncio
 import sys
 from fastapi import FastAPI, HTTPException
@@ -869,41 +1113,28 @@ class ScreenshotRequest(BaseModel):
 
 app = FastAPI()
 
-async def take_screenshot(url, output_path, browser_type, full_page, executable_path=None):
-    async with async_playwright() as p:
-        if browser_type == "chromium":
-            browser = await p.chromium.launch(headless=True)
-        elif browser_type == "firefox":
-            browser = await p.firefox.launch(headless=True)
-        elif browser_type == "webkit":
-            browser = await p.webkit.launch(headless=True)
-        else:
-            browser = await p.chromium.launch(headless=True)
-        
-        context = await browser.new_context(viewport={"width": 1920, "height": 1080})
-        page = await context.new_page()
-        await page.goto(url, timeout=180000)
-        await page.wait_for_load_state('networkidle')
+async def take_screenshot(page, url, output_path, full_page):
+    await page.goto(url, timeout=180000)
+    await page.wait_for_load_state('networkidle')
 
-        # Extract links
-        links = await extract_links(page)
-        
-        dimensions = await page.evaluate('''() => {
-            return {
-                width: document.documentElement.scrollWidth,
-                height: document.documentElement.scrollHeight
-            }
-        }''')
+    # Extract links
+    links = await extract_links(page)
+    
+    dimensions = await page.evaluate('''() => {
+        return {
+            width: document.documentElement.scrollWidth,
+            height: document.documentElement.scrollHeight
+        }
+    }''')
 
-        if full_page and (dimensions['width'] > 32767 or dimensions['height'] > 32767):
-            output_path = await take_large_screenshot(page, dimensions, output_path)
-        else:
-            await page.screenshot(path=output_path, full_page=full_page, timeout=180000)
-            output_path = slice_and_stretch_image(output_path, "c:/screenshots/")
-            print(f"Screenshot saved at {output_path[0]}")
+    if full_page and (dimensions['width'] > 32767 or dimensions['height'] > 32767):
+        output_path = await take_large_screenshot(page, dimensions, output_path)
+    else:
+        await page.screenshot(path=output_path, full_page=full_page, timeout=180000)
+        output_path = slice_and_stretch_image(output_path, "c:/screenshots/")
+        print(f"Screenshot saved at {output_path[0]}")
 
-        await browser.close()
-        return links, output_path[1] 
+    return links, output_path[1]
 
 def slice_and_stretch_image(image_path, output_folder):
     image = cv2.imread(image_path)
@@ -966,32 +1197,47 @@ async def take_large_screenshot(page, dimensions, output_path):
 @app.post("/screenshot/")
 async def create_screenshot(request: ScreenshotRequest):
     start_time = time.time()
-    try:
-        # Check if the URL already exists in the database
-        ExistingCheckTime = time.time()
-        existing_entry = check_existing_entry(request.url)
-        if existing_entry:
-            return {
-                "message": "Screenshot already exists",
-                "path": existing_entry['output_path'],
-                "slices": json.loads(existing_entry['slices'])
-            }
-        print("Existing Check Time: ", time.time() - ExistingCheckTime)
-        output_path = os.path.join(request.output_base_path, "screenshot.png")
-        links, slices = await take_screenshot(request.url, output_path, request.browser_type, request.full_page, request.executable_path)
-        elapsed_time = time.time() - start_time
-        print("Try bLock Check time : ",elapsed_time)
-        
-        # Store the slices in the database
-        store_slices_in_db(request.url, output_path, slices, links)
-        
-        return {"message": "Screenshot taken successfully", "path": output_path, "slices": slices}
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        elapsed_time = time.time() - start_time
-        print("Finally bLock Check time : ",elapsed_time)
+    async with async_playwright() as p:
+        try:
+            if request.browser_type == "chromium":
+                browser = await p.chromium.launch(headless=True)
+            elif request.browser_type == "firefox":
+                browser = await p.firefox.launch(headless=True)
+            elif request.browser_type == "webkit":
+                browser = await p.webkit.launch(headless=True)
+            else:
+                browser = await p.chromium.launch(headless=True)
+            
+            # Check if the URL already exists in the database
+            ExistingCheckTime = time.time()
+            existing_entry = check_existing_entry(request.url)
+            if existing_entry:
+                return {
+                    "message": "Screenshot already exists",
+                    "path": existing_entry['output_path'],
+                    "slices": json.loads(existing_entry['slices'])
+                }
+            print("Existing Check Time: ", time.time() - ExistingCheckTime)
+            output_path = os.path.join(request.output_base_path, "screenshot.png")
+            
+            context = await browser.new_context(viewport={"width": 1920, "height": 1080})
+            page = await context.new_page()
+            links, slices = await take_screenshot(page, request.url, output_path, request.full_page)
+            await page.close()
+            elapsed_time = time.time() - start_time
+            print("Try bLock Check time : ",elapsed_time)
+            
+            # Store the slices in the database
+            store_slices_in_db(request.url, output_path, slices, links)
+            
+            return {"message": "Screenshot taken successfully", "path": output_path, "slices": slices}
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            await browser.close()
+            elapsed_time = time.time() - start_time
+            print("Finally bLock Check time : ",elapsed_time)
 
 async def extract_links(page):
     return await page.evaluate('''() => {
