@@ -618,22 +618,98 @@
 
 ##################### working last final locally ############################
 
+
+# from fastapi import FastAPI, Query
+# from pydantic import BaseModel
+# import requests
+# import time
+# from typing import Optional
+# from bs4 import BeautifulSoup
+
+# app = FastAPI()
+
+# # Proxy settings
+# proxies = {
+#     'http': 'http://brd-customer-hl_d9339b7c-zone-serp_api1:w3u1xgsxexj2@brd.superproxy.io:22225',
+#     'https': 'http://brd-customer-hl_d9339b7c-zone-serp_api1:w3u1xgsxexj2@brd.superproxy.io:22225'
+# }
+
+# # Disable SSL verification warnings
+# requests.packages.urllib3.disable_warnings()
+
+# # Endpoint to take a query parameter and fetch results
+# @app.get("/search/")
+# def search(query: str = Query(..., description="Search query")):
+#     # Construct the URL with the query parameter
+#     url = f"https://www.google.com/search?q={query}"
+    
+#     # Measure execution time
+#     start_time = time.time()
+    
+#     # Make the request
+#     try:
+#         response = requests.get(url, proxies=proxies, verify=False)
+#         response.raise_for_status()  # Raise an error for bad status codes
+#     except requests.RequestException as e:
+#         return {"error": str(e)}
+    
+#     end_time = time.time()
+#     execution_time = end_time - start_time
+    
+#     # return {
+#     #     "execution_time": execution_time,
+#     #     "response": response.text
+#     # }
+#     data = []
+#     soup = BeautifulSoup(response.text, 'html.parser')
+        
+#     for result in soup.select(".tF2Cxc"):
+#         title = result.select_one(".DKV0Md").text
+#         heading = result.select_one(".VuuXrf").text if result.select_one(".VuuXrf") else None
+#         image_element = result.select_one(".XNo5Ab")
+#         image = image_element.get("src") if image_element else None
+#         snippet = result.select_one(".VwiC3b,.r025kc,.hJNv6b,.Hdw6tb").text if result.select_one(".VwiC3b,.r025kc,.hJNv6b,.Hdw6tb") else None
+#         links = result.select_one(".yuRUbf a")["href"] if result.select_one(".yuRUbf a") else None
+
+#         data.append({
+#             "title": title,
+#             "image": image,
+#             "description": snippet,
+#             "heading": heading,
+#             "links": links
+#         })
+#     return data
+
+
+
+
 # import asyncio
 # import sys
-# from fastapi import FastAPI, HTTPException
+# from fastapi import FastAPI, HTTPException, Query
 # from fastapi.responses import FileResponse
 # from pydantic import BaseModel
 # from playwright.sync_api import sync_playwright
 # import os
 # import time
+# import requests
 # import json
 # from PIL import Image
 # import pymysql
 # import uuid
+# from bs4 import BeautifulSoup
 
 # # Set WindowsProactorEventLoopPolicy if on Windows
 # if sys.platform.startswith('win'):
 #     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+# # Proxy settings
+# proxies = {
+#     'http': 'http://brd-customer-hl_d9339b7c-zone-serp_api1:w3u1xgsxexj2@brd.superproxy.io:22225',
+#     'https': 'http://brd-customer-hl_d9339b7c-zone-serp_api1:w3u1xgsxexj2@brd.superproxy.io:22225'
+# }
+
+# # Disable SSL verification warnings
+# requests.packages.urllib3.disable_warnings()
 
 # class ScreenshotRequest(BaseModel):
 #     url: str
@@ -643,6 +719,50 @@
 #     executable_path: str = None
 
 # app = FastAPI()
+
+
+# # Endpoint to take a query parameter and fetch results
+# @app.get("/search/")
+# def search(query: str = Query(..., description="Search query")):
+#     # Construct the URL with the query parameter
+#     url = f"https://www.google.com/search?q={query}"
+    
+#     # Measure execution time
+#     start_time = time.time()
+    
+#     # Make the request
+#     try:
+#         response = requests.get(url, proxies=proxies, verify=False)
+#         response.raise_for_status()  # Raise an error for bad status codes
+#     except requests.RequestException as e:
+#         return {"error": str(e)}
+    
+#     end_time = time.time()
+#     execution_time = end_time - start_time
+    
+#     # return {
+#     #     "execution_time": execution_time,
+#     #     "response": response.text
+#     # }
+#     data = []
+#     soup = BeautifulSoup(response.text, 'html.parser')
+        
+#     for result in soup.select(".tF2Cxc"):
+#         title = result.select_one(".DKV0Md").text
+#         heading = result.select_one(".VuuXrf").text if result.select_one(".VuuXrf") else None
+#         image_element = result.select_one(".XNo5Ab")
+#         image = image_element.get("src") if image_element else None
+#         snippet = result.select_one(".VwiC3b,.r025kc,.hJNv6b,.Hdw6tb").text if result.select_one(".VwiC3b,.r025kc,.hJNv6b,.Hdw6tb") else None
+#         links = result.select_one(".yuRUbf a")["href"] if result.select_one(".yuRUbf a") else None
+
+#         data.append({
+#             "title": title,
+#             "image": image,
+#             "description": snippet,
+#             "heading": heading,
+#             "links": links
+#         })
+#     return data
 
 # def take_screenshot(url, output_path, browser_type, full_page, executable_path=None):
 #     with sync_playwright() as p:
@@ -657,7 +777,23 @@
         
 #         context = browser.new_context(viewport={"width": 1920, "height": 1080})
 #         page = context.new_page()
-#         page.goto(url, timeout=180000)
+#         page.goto(url, timeout=300000)
+
+#         # Remove overlays and pop-ups
+#         page.evaluate('''() => {
+#             const selectors = [
+#                 'div[class*="overlay"]', 
+#                 'div[class*="popup"]', 
+#                 'div[class*="modal"]', 
+#                 'div[id*="overlay"]', 
+#                 'div[id*="popup"]', 
+#                 'div[id*="modal"]'
+#             ];
+#             for (const selector of selectors) {
+#                 const elements = document.querySelectorAll(selector);
+#                 elements.forEach(el => el.style.display = 'none');
+#             }
+#         }''')
 
 #         # Extract links
 #         links = extract_links(page)
@@ -836,6 +972,72 @@
 #     except Exception as e:
 #         print(f"An error occurred: {e}")
 #         raise HTTPException(status_code=500, detail=str(e))
+    
+# @app.get("/cronjob/")
+# def cronjob():
+#     try:
+#         print("11111")
+#         # Get all records older than 2 hours
+#         old_records = get_old_records()
+#         print("22222")
+#         for record in old_records:
+#             # Delete images
+#             # print(record)
+#             slices = json.loads(record[1])
+#             # slices = json.loads(record['slices'])
+#             # print(slices)
+#             for slice_path in slices:
+#                 # print(slice_path)
+#                 if os.path.exists(slice_path):
+#                     os.remove(slice_path)
+#                     print(f"Deleted slice: {slice_path}")
+
+#             # Remove record from the database
+#             delete_record(record[0])
+
+#         return {"message": "Old records and associated images deleted successfully"}
+#     except Exception as e:
+#         print(f"An error occurred: {e}")
+#         raise HTTPException(status_code=500, detail=str(e))
+
+# def get_old_records():
+#     connection = pymysql.connect(
+#         host='alldbserver.mysql.database.azure.com',
+#         user='u.s',
+#         password='&!ALvg4ty5g9s&N',
+#         database='devtest',
+#         ssl={
+#             'ca': 'DigiCertGlobalRootCA.crt 1.pem'
+#         }
+#     )
+#     try:
+#         with connection.cursor() as cursor:
+#             sql = "SELECT id, slices FROM screenshots WHERE timestamp_column > NOW() - INTERVAL 2 HOUR"
+#             cursor.execute(sql)
+#             result = cursor.fetchall()
+#             return result
+#     finally:
+#         connection.close()
+
+# def delete_record(record_id):
+#     connection = pymysql.connect(
+#         host='alldbserver.mysql.database.azure.com',
+#         user='u.s',
+#         password='&!ALvg4ty5g9s&N',
+#         database='devtest',
+#         ssl={
+#             'ca': 'DigiCertGlobalRootCA.crt 1.pem'
+#         }
+#     )
+#     try:
+#         with connection.cursor() as cursor:
+#             sql = "DELETE FROM screenshots WHERE id=%s"
+#             cursor.execute(sql, (record_id,))
+#         connection.commit()
+#     except pymysql.MySQLError as e:
+#         print(f"Error: {e}")
+#     finally:
+#         connection.close()
 
 
 
@@ -1088,21 +1290,32 @@
 
 import asyncio
 import sys
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from playwright.async_api import async_playwright
 import os
 import time
+import requests
 import json
 import cv2
 from PIL import Image
 import pymysql
 import uuid
+from bs4 import BeautifulSoup
 
 # Set WindowsProactorEventLoopPolicy if on Windows
 if sys.platform.startswith('win'):
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+# Proxy settings
+proxies = {
+    'http': 'http://brd-customer-hl_d9339b7c-zone-serp_api1:w3u1xgsxexj2@brd.superproxy.io:22225',
+    'https': 'http://brd-customer-hl_d9339b7c-zone-serp_api1:w3u1xgsxexj2@brd.superproxy.io:22225'
+}
+
+# Disable SSL verification warnings
+requests.packages.urllib3.disable_warnings()
 
 class ScreenshotRequest(BaseModel):
     url: str
@@ -1113,9 +1326,52 @@ class ScreenshotRequest(BaseModel):
 
 app = FastAPI()
 
+# Endpoint to take a query parameter and fetch results
+@app.get("/search/")
+def search(query: str = Query(..., description="Search query")):
+    # Construct the URL with the query parameter
+    url = f"https://www.google.com/search?q={query}"
+    
+    # Measure execution time
+    start_time = time.time()
+    
+    # Make the request
+    try:
+        response = requests.get(url, proxies=proxies, verify=False)
+        response.raise_for_status()  # Raise an error for bad status codes
+    except requests.RequestException as e:
+        return {"error": str(e)}
+    
+    end_time = time.time()
+    execution_time = end_time - start_time
+    
+    # return {
+    #     "execution_time": execution_time,
+    #     "response": response.text
+    # }
+    data = []
+    soup = BeautifulSoup(response.text, 'html.parser')
+        
+    for result in soup.select(".tF2Cxc"):
+        title = result.select_one(".DKV0Md").text
+        heading = result.select_one(".VuuXrf").text if result.select_one(".VuuXrf") else None
+        image_element = result.select_one(".XNo5Ab")
+        image = image_element.get("src") if image_element else None
+        snippet = result.select_one(".VwiC3b,.r025kc,.hJNv6b,.Hdw6tb").text if result.select_one(".VwiC3b,.r025kc,.hJNv6b,.Hdw6tb") else None
+        links = result.select_one(".yuRUbf a")["href"] if result.select_one(".yuRUbf a") else None
+
+        data.append({
+            "title": title,
+            "image": image,
+            "description": snippet,
+            "heading": heading,
+            "links": links
+        })
+    return data
+
 async def take_screenshot(page, url, output_path, full_page):
     await page.goto(url, timeout=180000)
-    await page.wait_for_load_state('networkidle')
+    # await page.wait_for_load_state('networkidle')
 
     # Extract links
     links = await extract_links(page)
@@ -1330,6 +1586,72 @@ def get_links(url: str):
     except Exception as e:
         print(f"An error occurred: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    
+@app.get("/cronjob/")
+def cronjob():
+    try:
+        print("11111")
+        # Get all records older than 2 hours
+        old_records = get_old_records()
+        print("22222")
+        for record in old_records:
+            # Delete images
+            # print(record)
+            slices = json.loads(record[1])
+            # slices = json.loads(record['slices'])
+            # print(slices)
+            for slice_path in slices:
+                # print(slice_path)
+                if os.path.exists(slice_path):
+                    os.remove(slice_path)
+                    print(f"Deleted slice: {slice_path}")
+
+            # Remove record from the database
+            delete_record(record[0])
+
+        return {"message": "Old records and associated images deleted successfully"}
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def get_old_records():
+    connection = pymysql.connect(
+        host='alldbserver.mysql.database.azure.com',
+        user='u.s',
+        password='&!ALvg4ty5g9s&N',
+        database='devtest',
+        ssl={
+            'ca': 'DigiCertGlobalRootCA.crt 1.pem'
+        }
+    )
+    try:
+        with connection.cursor() as cursor:
+            sql = "SELECT id, slices FROM screenshots WHERE timestamp_column > NOW() - INTERVAL 2 HOUR"
+            cursor.execute(sql)
+            result = cursor.fetchall()
+            return result
+    finally:
+        connection.close()
+
+def delete_record(record_id):
+    connection = pymysql.connect(
+        host='alldbserver.mysql.database.azure.com',
+        user='u.s',
+        password='&!ALvg4ty5g9s&N',
+        database='devtest',
+        ssl={
+            'ca': 'DigiCertGlobalRootCA.crt 1.pem'
+        }
+    )
+    try:
+        with connection.cursor() as cursor:
+            sql = "DELETE FROM screenshots WHERE id=%s"
+            cursor.execute(sql, (record_id,))
+        connection.commit()
+    except pymysql.MySQLError as e:
+        print(f"Error: {e}")
+    finally:
+        connection.close()
 
 
 
