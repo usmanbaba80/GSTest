@@ -1324,14 +1324,18 @@ class ScreenshotRequest(BaseModel):
     full_page: bool = True
     executable_path: str = None
 
+
 app = FastAPI()
 
 # Endpoint to take a query parameter and fetch results
 @app.get("/search/")
-def search(query: str = Query(..., description="Search query")):
+def search(query: str = Query(..., description="Search query"), searchType: str = Query(..., description="Type of search results")):
     # Construct the URL with the query parameter
-    url = f"https://www.google.com/search?q={query}"
-    
+    # if searchType == "news":
+    if searchType == "general":
+        url = f"https://www.google.com/search?q={query}&brd_json=1&gl=us"
+    else:
+        url = f"https://www.google.com/search?q={query}&tbm={searchType}&brd_json=1&gl=us"
     # Measure execution time
     start_time = time.time()
     
@@ -1349,25 +1353,39 @@ def search(query: str = Query(..., description="Search query")):
     #     "execution_time": execution_time,
     #     "response": response.text
     # }
-    data = []
-    soup = BeautifulSoup(response.text, 'html.parser')
-        
-    for result in soup.select(".tF2Cxc"):
-        title = result.select_one(".DKV0Md").text
-        heading = result.select_one(".VuuXrf").text if result.select_one(".VuuXrf") else None
-        image_element = result.select_one(".XNo5Ab")
-        image = image_element.get("src") if image_element else None
-        snippet = result.select_one(".VwiC3b,.r025kc,.hJNv6b,.Hdw6tb").text if result.select_one(".VwiC3b,.r025kc,.hJNv6b,.Hdw6tb") else None
-        links = result.select_one(".yuRUbf a")["href"] if result.select_one(".yuRUbf a") else None
+    if searchType == "general":
+        data = []
+        soup = BeautifulSoup(response.text, 'html.parser')
+            
+        for result in soup.select(".tF2Cxc"):
+            title = result.select_one(".DKV0Md").text
+            heading = result.select_one(".VuuXrf").text if result.select_one(".VuuXrf") else None
+            image_element = result.select_one(".XNo5Ab")
+            image = image_element.get("src") if image_element else None
+            snippet = result.select_one(".VwiC3b,.r025kc,.hJNv6b,.Hdw6tb").text if result.select_one(".VwiC3b,.r025kc,.hJNv6b,.Hdw6tb") else None
+            links = result.select_one(".yuRUbf a")["href"] if result.select_one(".yuRUbf a") else None
 
-        data.append({
-            "title": title,
-            "image": image,
-            "description": snippet,
-            "heading": heading,
-            "links": links
-        })
-    return data
+            data.append({
+                "title": title,
+                "image": image,
+                "description": snippet,
+                "heading": heading,
+                "links": links
+            })
+        return data
+
+    elif searchType == "nws":
+
+        return response.json()['news']
+    
+    elif searchType == "isch":
+
+        return response.json()['images']
+    
+    elif searchType == "shop":
+
+        return response.json()['shopping']
+
 
 async def take_screenshot(page, url, output_path, full_page):
     await page.goto(url, timeout=180000)
@@ -1588,11 +1606,11 @@ def get_links(url: str):
         raise HTTPException(status_code=500, detail=str(e))
     
 @app.get("/cronjob/")
-def cronjob():
+def cronjob(time: int):
     try:
         print("11111")
         # Get all records older than 2 hours
-        old_records = get_old_records()
+        old_records = get_old_records(time)
         print("22222")
         for record in old_records:
             # Delete images
@@ -1614,7 +1632,7 @@ def cronjob():
         print(f"An error occurred: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-def get_old_records():
+def get_old_records(time):
     connection = pymysql.connect(
         host='alldbserver.mysql.database.azure.com',
         user='u.s',
@@ -1626,7 +1644,7 @@ def get_old_records():
     )
     try:
         with connection.cursor() as cursor:
-            sql = "SELECT id, slices FROM screenshots WHERE timestamp_column > NOW() - INTERVAL 2 HOUR"
+            sql = "SELECT id, slices FROM screenshots WHERE timestamp_column > NOW() - INTERVAL {time} HOUR"
             cursor.execute(sql)
             result = cursor.fetchall()
             return result
