@@ -1332,10 +1332,13 @@ app = FastAPI()
 def search(query: str = Query(..., description="Search query"), searchType: str = Query(..., description="Type of search results")):
     # Construct the URL with the query parameter
     # if searchType == "news":
+    print(searchType)
     if searchType == "general":
-        url = f"https://www.google.com/search?q={query}&brd_json=1&gl=us"
+        url = f"https://www.google.com/search?q={query}&gl=us"
+        print("general URL is hitted")
     else:
         url = f"https://www.google.com/search?q={query}&tbm={searchType}&brd_json=1&gl=us"
+        print("Other URL is hitted")
     # Measure execution time
     start_time = time.time()
     
@@ -1354,6 +1357,7 @@ def search(query: str = Query(..., description="Search query"), searchType: str 
     #     "response": response.text
     # }
     if searchType == "general":
+        print("In General")
         data = []
         soup = BeautifulSoup(response.text, 'html.parser')
             
@@ -1375,14 +1379,17 @@ def search(query: str = Query(..., description="Search query"), searchType: str 
         return data
 
     elif searchType == "nws":
+        print("In News")
 
         return response.json()['news']
     
     elif searchType == "isch":
+        print("In Images")
 
         return response.json()['images']
     
     elif searchType == "shop":
+        print("In Shopping")
 
         return response.json()['shopping']
 
