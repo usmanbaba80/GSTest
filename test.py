@@ -1657,7 +1657,7 @@ def get_old_records(time):
         #     return result
         with connection.cursor() as cursor:
             # Use parameterized query to safely insert the time value
-            sql = "SELECT id, slices FROM screenshots WHERE timestamp_column > NOW() - INTERVAL %s HOUR"
+            sql = "SELECT id, slices FROM screenshots WHERE timestamp_column < NOW() - INTERVAL %s HOUR"
             cursor.execute(sql, (time,))
             result = cursor.fetchall()
             return result
