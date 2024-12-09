@@ -1319,7 +1319,7 @@ requests.packages.urllib3.disable_warnings()
 
 class ScreenshotRequest(BaseModel):
     url: str
-    output_base_path: str = 'c:/screenshots/'
+    output_base_path: str = 'https://usc1.contabostorage.com/gsdatasync/'
     browser_type: str = 'chromium'
     full_page: bool = True
     executable_path: str = None
@@ -1412,7 +1412,7 @@ async def take_screenshot(page, url, output_path, full_page):
         output_path = await take_large_screenshot(page, dimensions, output_path)
     else:
         await page.screenshot(path=output_path, full_page=full_page, timeout=180000)
-        output_path = slice_and_stretch_image(output_path, "c:/screenshots/")
+        output_path = slice_and_stretch_image(output_path, "https://usc1.contabostorage.com/gsdatasync/")
         print(f"Screenshot saved at {output_path[0]}")
 
     return links, output_path[1]
