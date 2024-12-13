@@ -1287,6 +1287,402 @@
 #         print(f"An error occurred: {e}")
 #         raise HTTPException(status_code=500, detail=str(e))
 
+########################## Last Final Updated code 13/12/2024 #######################
+# import asyncio
+# import sys
+# from fastapi import FastAPI, HTTPException, Query
+# from fastapi.responses import FileResponse
+# from pydantic import BaseModel
+# from playwright.async_api import async_playwright
+# import os
+# import time
+# import requests
+# import json
+# import cv2
+# from PIL import Image
+# import pymysql
+# import uuid
+# from bs4 import BeautifulSoup
+
+# # Set WindowsProactorEventLoopPolicy if on Windows
+# if sys.platform.startswith('win'):
+#     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+# # Proxy settings
+# proxies = {
+#     'http': 'http://brd-customer-hl_d9339b7c-zone-serp_api1:w3u1xgsxexj2@brd.superproxy.io:22225',
+#     'https': 'http://brd-customer-hl_d9339b7c-zone-serp_api1:w3u1xgsxexj2@brd.superproxy.io:22225'
+# }
+
+# # Disable SSL verification warnings
+# requests.packages.urllib3.disable_warnings()
+
+# class ScreenshotRequest(BaseModel):
+#     url: str
+#     output_base_path: str = 'https://usc1.contabostorage.com/gsdatasync/'
+#     browser_type: str = 'chromium'
+#     full_page: bool = True
+#     executable_path: str = None
+
+
+# app = FastAPI()
+
+# # Endpoint to take a query parameter and fetch results
+# @app.get("/search/")
+# def search(query: str = Query(..., description="Search query"), searchType: str = Query(..., description="Type of search results")):
+#     # Construct the URL with the query parameter
+#     # if searchType == "news":
+#     print(searchType)
+#     if searchType == "general":
+#         url = f"https://www.google.com/search?q={query}&gl=us"
+#         print("general URL is hitted")
+#     else:
+#         url = f"https://www.google.com/search?q={query}&tbm={searchType}&brd_json=1&gl=us"
+#         print("Other URL is hitted")
+#     # Measure execution time
+#     start_time = time.time()
+    
+#     # Make the request
+#     try:
+#         response = requests.get(url, proxies=proxies, verify=False)
+#         response.raise_for_status()  # Raise an error for bad status codes
+#     except requests.RequestException as e:
+#         return {"error": str(e)}
+    
+#     end_time = time.time()
+#     execution_time = end_time - start_time
+    
+#     # return {
+#     #     "execution_time": execution_time,
+#     #     "response": response.text
+#     # }
+#     if searchType == "general":
+#         print("In General")
+#         data = []
+#         soup = BeautifulSoup(response.text, 'html.parser')
+            
+#         for result in soup.select(".tF2Cxc"):
+#             title = result.select_one(".DKV0Md").text
+#             heading = result.select_one(".VuuXrf").text if result.select_one(".VuuXrf") else None
+#             image_element = result.select_one(".XNo5Ab")
+#             image = image_element.get("src") if image_element else None
+#             snippet = result.select_one(".VwiC3b,.r025kc,.hJNv6b,.Hdw6tb").text if result.select_one(".VwiC3b,.r025kc,.hJNv6b,.Hdw6tb") else None
+#             links = result.select_one(".yuRUbf a")["href"] if result.select_one(".yuRUbf a") else None
+
+#             data.append({
+#                 "title": title,
+#                 "image": image,
+#                 "description": snippet,
+#                 "heading": heading,
+#                 "links": links
+#             })
+#         return data
+
+#     elif searchType == "nws":
+#         print("In News")
+
+#         return response.json()['news']
+    
+#     elif searchType == "isch":
+#         print("In Images")
+
+#         return response.json()['images']
+    
+#     elif searchType == "shop":
+#         print("In Shopping")
+
+#         return response.json()['shopping']
+
+
+# async def take_screenshot(page, url, output_path, full_page):
+#     await page.goto(url, timeout=180000)
+#     # await page.wait_for_load_state('networkidle')
+
+#     # Extract links
+#     links = await extract_links(page)
+    
+#     dimensions = await page.evaluate('''() => {
+#         return {
+#             width: document.documentElement.scrollWidth,
+#             height: document.documentElement.scrollHeight
+#         }
+#     }''')
+
+#     if full_page and (dimensions['width'] > 32767 or dimensions['height'] > 32767):
+#         output_path = await take_large_screenshot(page, dimensions, output_path)
+#     else:
+#         await page.screenshot(path=output_path, full_page=full_page, timeout=180000)
+#         output_path = slice_and_stretch_image(output_path, "https://usc1.contabostorage.com/gsdatasync/")
+#         print(f"Screenshot saved at {output_path[0]}")
+
+#     return links, output_path[1]
+
+# def slice_and_stretch_image(image_path, output_folder):
+#     image = cv2.imread(image_path)
+#     height, width, _ = image.shape
+#     slice_width = 1920
+#     slice_height = 1080
+    
+#     if not os.path.exists(output_folder):
+#         os.makedirs(output_folder)
+#     temp_image_paths = []
+#     slice_count = 1
+
+#     for y in range(0, height, slice_height):
+#         for x in range(0, width, slice_width):
+#             unique_id = uuid.uuid4().hex
+#             end_x = min(x + slice_width, width)
+#             end_y = min(y + slice_height, height)
+#             temp_image_path = f'{output_folder}{unique_id}_{end_x}_{end_y}.png'
+#             # Crop the image slice
+#             cropped_slice = image[y:end_y, x:end_x]
+            
+#             if cropped_slice.shape[1] != slice_width:
+#                 cropped_slice = cv2.resize(cropped_slice, (slice_width, cropped_slice.shape[0]), interpolation=cv2.INTER_LINEAR)
+            
+#             slice_filename = temp_image_path
+#             cv2.imwrite(slice_filename, cropped_slice, [cv2.IMWRITE_JPEG_QUALITY, 30])
+#             print(f"Saved stretched slice: {slice_filename}")
+#             temp_image_paths.append(temp_image_path)
+            
+#             slice_count += 1
+#     return [output_folder, temp_image_paths]
+
+# async def take_large_screenshot(page, dimensions, output_path):
+#     scroll_width = dimensions['width']
+#     scroll_height = dimensions['height']
+#     viewport_width = min(page.viewport_size['width'], 32767)
+#     viewport_height = min(page.viewport_size['height'], 32767)
+#     stitch_image = Image.new('RGB', (scroll_width, scroll_height))
+#     temp_image_paths = []
+
+#     for y in range(0, scroll_height, viewport_height):
+#         for x in range(0, scroll_width, viewport_width):
+#             unique_id = uuid.uuid4().hex
+#             await page.evaluate(f'window.scrollTo({x}, {y})')
+#             clip_width = min(viewport_width, scroll_width - x)
+#             clip_height = min(viewport_height, scroll_height - y)
+#             temp_image_path = f'{output_path}{unique_id}_{x}_{y}.png'
+#             await page.screenshot(path=temp_image_path, clip={'x': 0, 'y': 0, 'width': clip_width, 'height': clip_height})
+#             temp_image_paths.append(temp_image_path)
+            
+#     for temp_image_path in temp_image_paths:
+#         temp_image = Image.open(temp_image_path)
+#         x, y = map(int, temp_image_path.replace(output_path, '').replace('.png', '').split('_')[1:])
+#         stitch_image.paste(temp_image, (x, y))
+        
+#     stitch_image.save(output_path)
+#     print(f"Large screenshot saved at {output_path}")
+#     return [output_path, temp_image_paths]
+
+# @app.post("/screenshot/")
+# async def create_screenshot(request: ScreenshotRequest):
+#     start_time = time.time()
+#     async with async_playwright() as p:
+#         try:
+#             if request.browser_type == "chromium":
+#                 browser = await p.chromium.launch(headless=True)
+#             elif request.browser_type == "firefox":
+#                 browser = await p.firefox.launch(headless=True)
+#             elif request.browser_type == "webkit":
+#                 browser = await p.webkit.launch(headless=True)
+#             else:
+#                 browser = await p.chromium.launch(headless=True)
+            
+#             # Check if the URL already exists in the database
+#             ExistingCheckTime = time.time()
+#             existing_entry = check_existing_entry(request.url)
+#             if existing_entry:
+#                 return {
+#                     "message": "Screenshot already exists",
+#                     "path": existing_entry['output_path'],
+#                     "slices": json.loads(existing_entry['slices'])
+#                 }
+#             print("Existing Check Time: ", time.time() - ExistingCheckTime)
+#             output_path = os.path.join(request.output_base_path, "screenshot.png")
+            
+#             context = await browser.new_context(viewport={"width": 1920, "height": 1080})
+#             page = await context.new_page()
+#             links, slices = await take_screenshot(page, request.url, output_path, request.full_page)
+#             await page.close()
+#             elapsed_time = time.time() - start_time
+#             print("Try bLock Check time : ",elapsed_time)
+            
+#             # Store the slices in the database
+#             store_slices_in_db(request.url, output_path, slices, links)
+            
+#             return {"message": "Screenshot taken successfully", "path": output_path, "slices": slices}
+#         except Exception as e:
+#             print(f"An error occurred: {e}")
+#             raise HTTPException(status_code=500, detail=str(e))
+#         finally:
+#             await browser.close()
+#             elapsed_time = time.time() - start_time
+#             print("Finally bLock Check time : ",elapsed_time)
+
+# async def extract_links(page):
+#     return await page.evaluate('''() => {
+#         return Array.from(document.querySelectorAll('a')).map(a => ({
+#             href: a.href,
+#             text: a.innerText
+#         }));
+#     }''')
+
+# def store_slices_in_db(url, output_path, slices, links):
+#     connection = pymysql.connect(
+#         host='alldbserver.mysql.database.azure.com',
+#         user='u.s',
+#         password='&!ALvg4ty5g9s&N',
+#         database='devtest',
+#         ssl={
+#             'ca': 'DigiCertGlobalRootCA.crt 1.pem'
+#         }
+#     )
+#     try:
+#         with connection.cursor() as cursor:
+#             sql = "INSERT INTO screenshots (url, output_path, slices, links) VALUES (%s, %s, %s, %s)"
+#             cursor.execute(sql, (url, output_path, json.dumps(slices), json.dumps(links)))
+#         connection.commit()
+#     except pymysql.MySQLError as e:
+#         print(f"Error: {e}")
+#     finally:
+#         connection.close()
+
+# def check_existing_entry(url):
+#     connection = pymysql.connect(
+#         host='alldbserver.mysql.database.azure.com',
+#         user='u.s',
+#         password='&!ALvg4ty5g9s&N',
+#         database='devtest',
+#         ssl={
+#             'ca': 'DigiCertGlobalRootCA.crt 1.pem'
+#         }
+#     )
+#     try:
+#         with connection.cursor() as cursor:
+#             sql = "SELECT output_path, slices, links FROM screenshots WHERE url=%s"
+#             cursor.execute(sql, (url,))
+#             result = cursor.fetchone()
+#             if result:
+#                 return {
+#                     "output_path": result[0],
+#                     "slices": result[1],
+#                     "links": result[2]
+#                 }
+#             return None
+#     finally:
+#         connection.close()
+
+# def get_links_from_db(url):
+#     connection = pymysql.connect(
+#         host='alldbserver.mysql.database.azure.com',
+#         user='u.s',
+#         password='&!ALvg4ty5g9s&N',
+#         database='devtest',
+#         ssl={
+#             'ca': 'DigiCertGlobalRootCA.crt 1.pem'
+#         }
+#     )
+#     try:
+#         with connection.cursor() as cursor:
+#             sql = "SELECT links FROM screenshots WHERE url=%s"
+#             cursor.execute(sql, (url,))
+#             result = cursor.fetchone()
+#             if result:
+#                 # Parse the JSON string back into a Python object
+#                 links = json.loads(result[0])
+#                 return {
+#                     "links": links
+#                 }
+#             return None
+#     finally:
+#         connection.close()
+
+# @app.get("/slice/")
+# def get_slice(path: str):
+#     if not os.path.exists(path):
+#         raise HTTPException(status_code=404, detail="Slice not found")
+#     return FileResponse(path)
+
+# @app.get("/links/")
+# def get_links(url: str):
+#     try: 
+#         return get_links_from_db(url)
+#     except Exception as e:
+#         print(f"An error occurred: {e}")
+#         raise HTTPException(status_code=500, detail=str(e))
+    
+# @app.get("/cronjob/")
+# def cronjob(time: int):
+#     try:
+#         print("11111")
+#         # Get all records older than 2 hours
+#         old_records = get_old_records(time)
+#         print("22222")
+#         for record in old_records:
+#             # Delete images
+#             # print(record)
+#             slices = json.loads(record[1])
+#             # slices = json.loads(record['slices'])
+#             # print(slices)
+#             for slice_path in slices:
+#                 # print(slice_path)
+#                 if os.path.exists(slice_path):
+#                     os.remove(slice_path)
+#                     print(f"Deleted slice: {slice_path}")
+
+#             # Remove record from the database
+#             delete_record(record[0])
+
+#         return {"message": "Old records and associated images deleted successfully"}
+#     except Exception as e:
+#         print(f"An error occurred: {e}")
+#         raise HTTPException(status_code=500, detail=str(e))
+
+# def get_old_records(time):
+#     connection = pymysql.connect(
+#         host='alldbserver.mysql.database.azure.com',
+#         user='u.s',
+#         password='&!ALvg4ty5g9s&N',
+#         database='devtest',
+#         ssl={
+#             'ca': 'DigiCertGlobalRootCA.crt 1.pem'
+#         }
+#     )
+#     try:
+#         # with connection.cursor() as cursor:
+#         #     sql = "SELECT id, slices FROM screenshots WHERE timestamp_column > NOW() - INTERVAL {time} HOUR"
+#         #     cursor.execute(sql)
+#         #     result = cursor.fetchall()
+#         #     return result
+#         with connection.cursor() as cursor:
+#             # Use parameterized query to safely insert the time value
+#             sql = "SELECT id, slices FROM screenshots WHERE timestamp_column < NOW() - INTERVAL %s HOUR"
+#             cursor.execute(sql, (time,))
+#             result = cursor.fetchall()
+#             return result
+#     finally:
+#         connection.close()
+
+# def delete_record(record_id):
+#     connection = pymysql.connect(
+#         host='alldbserver.mysql.database.azure.com',
+#         user='u.s',
+#         password='&!ALvg4ty5g9s&N',
+#         database='devtest',
+#         ssl={
+#             'ca': 'DigiCertGlobalRootCA.crt 1.pem'
+#         }
+#     )
+#     try:
+#         with connection.cursor() as cursor:
+#             sql = "DELETE FROM screenshots WHERE id=%s"
+#             cursor.execute(sql, (record_id,))
+#         connection.commit()
+#     except pymysql.MySQLError as e:
+#         print(f"Error: {e}")
+#     finally:
+#         connection.close()
 
 import asyncio
 import sys
@@ -1303,6 +1699,8 @@ from PIL import Image
 import pymysql
 import uuid
 from bs4 import BeautifulSoup
+import boto3
+from botocore.exceptions import NoCredentialsError, PartialCredentialsError
 
 # Set WindowsProactorEventLoopPolicy if on Windows
 if sys.platform.startswith('win'):
@@ -1326,6 +1724,16 @@ class ScreenshotRequest(BaseModel):
 
 
 app = FastAPI()
+
+
+# Initialize S3 client for Contabo storage
+s3_client = boto3.client(
+    's3',
+    endpoint_url='https://usc1.contabostorage.com',  # Contabo storage endpoint
+    aws_access_key_id='YOUR_ACCESS_KEY',
+    aws_secret_access_key='YOUR_SECRET_KEY'
+)
+
 
 # Endpoint to take a query parameter and fetch results
 @app.get("/search/")
@@ -1409,22 +1817,37 @@ async def take_screenshot(page, url, output_path, full_page):
     }''')
 
     if full_page and (dimensions['width'] > 32767 or dimensions['height'] > 32767):
-        output_path = await take_large_screenshot(page, dimensions, output_path)
+        screenshot_path, slices = await take_large_screenshot(page, dimensions, output_path)
     else:
         await page.screenshot(path=output_path, full_page=full_page, timeout=180000)
-        output_path = slice_and_stretch_image(output_path, "https://usc1.contabostorage.com/gsdatasync/")
-        print(f"Screenshot saved at {output_path[0]}")
+        # Upload screenshot to Contabo storage
+        try:
+            s3_client.upload_file(output_path, 'gsdatasync', f'screenshots/{os.path.basename(output_path)}')
+            remote_path = f'https://usc1.contabostorage.com/gsdatasync/screenshots/{os.path.basename(output_path)}'
+        except (NoCredentialsError, PartialCredentialsError) as e:
+            print(f"Error uploading to Contabo: {e}")
+            return None
 
-    return links, output_path[1]
+        slices = slice_and_stretch_image(output_path, s3_client)
+        print(f"Screenshot saved at {slices}")
 
-def slice_and_stretch_image(image_path, output_folder):
+    return links, slices
+
+    # if full_page and (dimensions['width'] > 32767 or dimensions['height'] > 32767):
+    #     output_path = await take_large_screenshot(page, dimensions, output_path)
+    # else:
+    #     await page.screenshot(path=output_path, full_page=full_page, timeout=180000)
+    #     output_path = slice_and_stretch_image(output_path, "https://usc1.contabostorage.com/gsdatasync/")
+    #     print(f"Screenshot saved at {output_path[0]}")
+
+    # return links, output_path[1]
+
+def slice_and_stretch_image(image_path, s3_client):
     image = cv2.imread(image_path)
     height, width, _ = image.shape
     slice_width = 1920
     slice_height = 1080
-    
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
+
     temp_image_paths = []
     slice_count = 1
 
@@ -1433,20 +1856,60 @@ def slice_and_stretch_image(image_path, output_folder):
             unique_id = uuid.uuid4().hex
             end_x = min(x + slice_width, width)
             end_y = min(y + slice_height, height)
-            temp_image_path = f'{output_folder}{unique_id}_{end_x}_{end_y}.png'
+            temp_image_path = f'/tmp/{unique_id}_{end_x}_{end_y}.png'
             # Crop the image slice
             cropped_slice = image[y:end_y, x:end_x]
-            
+
             if cropped_slice.shape[1] != slice_width:
                 cropped_slice = cv2.resize(cropped_slice, (slice_width, cropped_slice.shape[0]), interpolation=cv2.INTER_LINEAR)
-            
+
             slice_filename = temp_image_path
             cv2.imwrite(slice_filename, cropped_slice, [cv2.IMWRITE_JPEG_QUALITY, 30])
             print(f"Saved stretched slice: {slice_filename}")
-            temp_image_paths.append(temp_image_path)
-            
+
+            # Upload the image slice to the Contabo bucket
+            try:
+                s3_client.upload_file(slice_filename, 'gsdatasync', f'slices/{os.path.basename(slice_filename)}')
+                remote_path = f'https://usc1.contabostorage.com/gsdatasync/slices/{os.path.basename(slice_filename)}'
+                temp_image_paths.append(remote_path)
+            except (NoCredentialsError, PartialCredentialsError) as e:
+                print(f"Error uploading to Contabo: {e}")
+                return None
+
             slice_count += 1
-    return [output_folder, temp_image_paths]
+
+    return temp_image_paths
+
+# def slice_and_stretch_image(image_path, output_folder):
+#     image = cv2.imread(image_path)
+#     height, width, _ = image.shape
+#     slice_width = 1920
+#     slice_height = 1080
+    
+#     if not os.path.exists(output_folder):
+#         os.makedirs(output_folder)
+#     temp_image_paths = []
+#     slice_count = 1
+
+#     for y in range(0, height, slice_height):
+#         for x in range(0, width, slice_width):
+#             unique_id = uuid.uuid4().hex
+#             end_x = min(x + slice_width, width)
+#             end_y = min(y + slice_height, height)
+#             temp_image_path = f'{output_folder}{unique_id}_{end_x}_{end_y}.png'
+#             # Crop the image slice
+#             cropped_slice = image[y:end_y, x:end_x]
+            
+#             if cropped_slice.shape[1] != slice_width:
+#                 cropped_slice = cv2.resize(cropped_slice, (slice_width, cropped_slice.shape[0]), interpolation=cv2.INTER_LINEAR)
+            
+#             slice_filename = temp_image_path
+#             cv2.imwrite(slice_filename, cropped_slice, [cv2.IMWRITE_JPEG_QUALITY, 30])
+#             print(f"Saved stretched slice: {slice_filename}")
+#             temp_image_paths.append(temp_image_path)
+            
+#             slice_count += 1
+#     return [output_folder, temp_image_paths]
 
 async def take_large_screenshot(page, dimensions, output_path):
     scroll_width = dimensions['width']
@@ -1531,8 +1994,8 @@ async def extract_links(page):
 def store_slices_in_db(url, output_path, slices, links):
     connection = pymysql.connect(
         host='alldbserver.mysql.database.azure.com',
-        user='u.s',
-        password='&!ALvg4ty5g9s&N',
+        user='usman.shabbir@invicttus.com',
+        password='Veroke@94',
         database='devtest',
         ssl={
             'ca': 'DigiCertGlobalRootCA.crt 1.pem'
@@ -1551,8 +2014,8 @@ def store_slices_in_db(url, output_path, slices, links):
 def check_existing_entry(url):
     connection = pymysql.connect(
         host='alldbserver.mysql.database.azure.com',
-        user='u.s',
-        password='&!ALvg4ty5g9s&N',
+        user='usman.shabbir@invicttus.com',
+        password='Veroke@94',
         database='devtest',
         ssl={
             'ca': 'DigiCertGlobalRootCA.crt 1.pem'
@@ -1576,8 +2039,8 @@ def check_existing_entry(url):
 def get_links_from_db(url):
     connection = pymysql.connect(
         host='alldbserver.mysql.database.azure.com',
-        user='u.s',
-        password='&!ALvg4ty5g9s&N',
+        user='usman.shabbir@invicttus.com',
+        password='Veroke@94',
         database='devtest',
         ssl={
             'ca': 'DigiCertGlobalRootCA.crt 1.pem'
@@ -1642,8 +2105,8 @@ def cronjob(time: int):
 def get_old_records(time):
     connection = pymysql.connect(
         host='alldbserver.mysql.database.azure.com',
-        user='u.s',
-        password='&!ALvg4ty5g9s&N',
+        user='usman.shabbir@invicttus.com',
+        password='Veroke@94',
         database='devtest',
         ssl={
             'ca': 'DigiCertGlobalRootCA.crt 1.pem'
@@ -1667,8 +2130,8 @@ def get_old_records(time):
 def delete_record(record_id):
     connection = pymysql.connect(
         host='alldbserver.mysql.database.azure.com',
-        user='u.s',
-        password='&!ALvg4ty5g9s&N',
+        user='usman.shabbir@invicttus.com',
+        password='Veroke@94',
         database='devtest',
         ssl={
             'ca': 'DigiCertGlobalRootCA.crt 1.pem'
@@ -1683,8 +2146,6 @@ def delete_record(record_id):
         print(f"Error: {e}")
     finally:
         connection.close()
-
-
 
 
 
