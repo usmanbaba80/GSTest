@@ -1730,8 +1730,8 @@ app = FastAPI()
 s3_client = boto3.client(
     's3',
     endpoint_url='https://usc1.contabostorage.com',  # Contabo storage endpoint
-    aws_access_key_id='YOUR_ACCESS_KEY',
-    aws_secret_access_key='YOUR_SECRET_KEY'
+    aws_access_key_id='f4f5b81dec2f7eca236d4ca7210b5d52',
+    aws_secret_access_key='fb9b918586db40cd32ee687ed3a2e6da'
 )
 
 
@@ -1822,8 +1822,8 @@ async def take_screenshot(page, url, output_path, full_page):
         await page.screenshot(path=output_path, full_page=full_page, timeout=180000)
         # Upload screenshot to Contabo storage
         try:
-            s3_client.upload_file(output_path, 'gsdatasync', f'screenshots/{os.path.basename(output_path)}')
-            remote_path = f'https://usc1.contabostorage.com/gsdatasync/screenshots/{os.path.basename(output_path)}'
+            s3_client.upload_file(output_path, 'gsdatasync', f'screenshots{os.path.basename(output_path)}', ExtraArgs={'ACL': 'public-read', 'ContentType': 'image/png'})
+            remote_path = f'https://usc1.contabostorage.com/gsdatasync/{os.path.basename(output_path)}'
         except (NoCredentialsError, PartialCredentialsError) as e:
             print(f"Error uploading to Contabo: {e}")
             return None
@@ -1856,7 +1856,7 @@ def slice_and_stretch_image(image_path, s3_client):
             unique_id = uuid.uuid4().hex
             end_x = min(x + slice_width, width)
             end_y = min(y + slice_height, height)
-            temp_image_path = f'/tmp/{unique_id}_{end_x}_{end_y}.png'
+            temp_image_path = f'{unique_id}_{end_x}_{end_y}.png'
             # Crop the image slice
             cropped_slice = image[y:end_y, x:end_x]
 
@@ -1869,8 +1869,8 @@ def slice_and_stretch_image(image_path, s3_client):
 
             # Upload the image slice to the Contabo bucket
             try:
-                s3_client.upload_file(slice_filename, 'gsdatasync', f'slices/{os.path.basename(slice_filename)}')
-                remote_path = f'https://usc1.contabostorage.com/gsdatasync/slices/{os.path.basename(slice_filename)}'
+                s3_client.upload_file(slice_filename, 'gsdatasync', f'{os.path.basename(slice_filename)}')
+                remote_path = f'{os.path.basename(slice_filename)}'
                 temp_image_paths.append(remote_path)
             except (NoCredentialsError, PartialCredentialsError) as e:
                 print(f"Error uploading to Contabo: {e}")
