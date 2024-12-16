@@ -1869,7 +1869,7 @@ def slice_and_stretch_image(image_path, s3_client):
 
             # Upload the image slice to the Contabo bucket
             try:
-                s3_client.upload_file(slice_filename, 'gsdatasync', f'{os.path.basename(slice_filename)}')
+                s3_client.upload_file(slice_filename, 'gsdatasync', f'{os.path.basename(slice_filename)}', ExtraArgs={'ACL': 'public-read', 'ContentType': 'image/png'})
                 remote_path = f'{os.path.basename(slice_filename)}'
                 temp_image_paths.append(remote_path)
             except (NoCredentialsError, PartialCredentialsError) as e:
