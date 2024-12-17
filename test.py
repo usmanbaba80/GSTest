@@ -1691,6 +1691,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from playwright.async_api import async_playwright
 import os
+import io
 import time
 import requests
 import json
@@ -1880,13 +1881,16 @@ def slice_and_stretch_image(image_path, s3_client):
             print("After saving Slices in buffer")
             if is_success:
                 image_data = buffer.tobytes()
+                image_file_obj = io.BytesIO(image_data)
+                # image_data = buffer.tobytes()
             # cv2.imwrite(slice_filename, cropped_slice, [cv2.IMWRITE_JPEG_QUALITY, 30])
             # print(f"Saved stretched slice: {slice_filename}")
 
             # Upload the image slice to the Contabo bucket
                 try:
                     print("before uploading slice to bucket")
-                    s3_client.upload_file(image_data, 'gsdatasync', f'{os.path.basename(slice_filename)}', ExtraArgs={'ACL': 'public-read', 'ContentType': 'image/png'})
+                    s3_client.upload_fileobj(image_file_obj, 'gsdatasync', f'{os.path.basename(temp_image_path)}', ExtraArgs={'ACL': 'public-read', 'ContentType': 'image/png'})
+                    # s3_client.upload_file(image_data, 'gsdatasync', f'{os.path.basename(slice_filename)}', ExtraArgs={'ACL': 'public-read', 'ContentType': 'image/png'})
                     print("After uploading slice to bucket")
                     remote_path = f'{os.path.basename(slice_filename)}'
                     temp_image_paths.append(remote_path)
