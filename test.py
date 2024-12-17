@@ -1819,7 +1819,8 @@ async def take_screenshot(page, url, output_path, full_page):
     }''')
 
     if full_page and (dimensions['width'] > 32767 or dimensions['height'] > 32767):
-        screenshot_path, slices = await take_large_screenshot(page, dimensions, output_path)
+        # screenshot_path, slices = await take_large_screenshot(page, dimensions, output_path)
+        slices = await take_large_screenshot(page, dimensions, s3_client)
     else:
         # await page.screenshot(path=output_path, full_page=full_page, timeout=180000)
         print("Before Main Screenshot")
@@ -1933,7 +1934,7 @@ def slice_and_stretch_image(image_path, s3_client):
 #             slice_count += 1
 #     return [output_folder, temp_image_paths]
 
-async def take_large_screenshot(page, dimensions, output_path):
+async def take_large_screenshot(page, dimensions, s3_client):
     scroll_width = dimensions['width']
     scroll_height = dimensions['height']
     viewport_width = min(page.viewport_size['width'], 32767)
@@ -1947,18 +1948,43 @@ async def take_large_screenshot(page, dimensions, output_path):
             await page.evaluate(f'window.scrollTo({x}, {y})')
             clip_width = min(viewport_width, scroll_width - x)
             clip_height = min(viewport_height, scroll_height - y)
-            temp_image_path = f'{output_path}{unique_id}_{x}_{y}.png'
-            await page.screenshot(path=temp_image_path, clip={'x': 0, 'y': 0, 'width': clip_width, 'height': clip_height})
-            temp_image_paths.append(temp_image_path)
+            temp_image_path = f'{unique_id}_{x}_{y}.png'
+            ##################################
+            # print("Before saving Slices in buffer")
+            # is_success, buffer = cv2.imencode('.png', cropped_slice, [cv2.IMWRITE_PNG_COMPRESSION, 9])
+            # print("After saving Slices in buffer")
+            # if is_success:
+            #     image_data = buffer.tobytes()
+            #     image_file_obj = io.BytesIO(image_data)
+            ##################################
+            screenshot_bytes = await page.screenshot(type='png', clip={'x': 0, 'y': 0, 'width': clip_width, 'height': clip_height})
+            nparr = np.frombuffer(screenshot_bytes, np.uint8)
+            # Decode image data to OpenCV format
+            image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+            try:
+                print("before uploading slice to bucket of large Pages")
+                s3_client.upload_fileobj(image, 'gsdatasync', f'{os.path.basename(temp_image_path)}', ExtraArgs={'ACL': 'public-read', 'ContentType': 'image/png'})
+                # s3_client.upload_file(image_data, 'gsdatasync', f'{os.path.basename(slice_filename)}', ExtraArgs={'ACL': 'public-read', 'ContentType': 'image/png'})
+                print("After uploading slice to bucket of large Pages")
+                remote_path = f'{os.path.basename(temp_image_path)}'
+                temp_image_paths.append(remote_path)
+            except (NoCredentialsError, PartialCredentialsError) as e:
+                print(f"Error uploading to Contabo: {e}")
+                return None
+
             
-    for temp_image_path in temp_image_paths:
-        temp_image = Image.open(temp_image_path)
-        x, y = map(int, temp_image_path.replace(output_path, '').replace('.png', '').split('_')[1:])
-        stitch_image.paste(temp_image, (x, y))
+            # await page.screenshot(path=temp_image_path, clip={'x': 0, 'y': 0, 'width': clip_width, 'height': clip_height})
+            # temp_image_paths.append(temp_image_path)
+            
+    # for temp_image_path in temp_image_paths:
+    #     temp_image = Image.open(temp_image_path)
+    #     x, y = map(int, temp_image_path.replace(output_path, '').replace('.png', '').split('_')[1:])
+    #     stitch_image.paste(temp_image, (x, y))
         
-    stitch_image.save(output_path)
-    print(f"Large screenshot saved at {output_path}")
-    return [output_path, temp_image_paths]
+    # stitch_image.save(output_path)
+    # print(f"Large screenshot saved at {output_path}")
+    return temp_image_paths
 
 @app.post("/screenshot/")
 async def create_screenshot(request: ScreenshotRequest):
