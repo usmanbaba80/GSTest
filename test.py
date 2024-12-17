@@ -1961,17 +1961,21 @@ async def take_large_screenshot(page, dimensions, s3_client):
             nparr = np.frombuffer(screenshot_bytes, np.uint8)
             # Decode image data to OpenCV format
             image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            # Encode the image as PNG and write to a BytesIO object
+            is_success, buffer = cv2.imencode('.png', image, [cv2.IMWRITE_PNG_COMPRESSION, 9])
+            if is_success:
+                image_file_obj = io.BytesIO(buffer)
 
-            try:
-                print("before uploading slice to bucket of large Pages")
-                s3_client.upload_fileobj(image, 'gsdatasync', f'{os.path.basename(temp_image_path)}', ExtraArgs={'ACL': 'public-read', 'ContentType': 'image/png'})
-                # s3_client.upload_file(image_data, 'gsdatasync', f'{os.path.basename(slice_filename)}', ExtraArgs={'ACL': 'public-read', 'ContentType': 'image/png'})
-                print("After uploading slice to bucket of large Pages")
-                remote_path = f'{os.path.basename(temp_image_path)}'
-                temp_image_paths.append(remote_path)
-            except (NoCredentialsError, PartialCredentialsError) as e:
-                print(f"Error uploading to Contabo: {e}")
-                return None
+                try:
+                    print("before uploading slice to bucket of large Pages")
+                    s3_client.upload_fileobj(image_file_obj, 'gsdatasync', f'{os.path.basename(temp_image_path)}', ExtraArgs={'ACL': 'public-read', 'ContentType': 'image/png'})
+                    # s3_client.upload_file(image_data, 'gsdatasync', f'{os.path.basename(slice_filename)}', ExtraArgs={'ACL': 'public-read', 'ContentType': 'image/png'})
+                    print("After uploading slice to bucket of large Pages")
+                    remote_path = f'{os.path.basename(temp_image_path)}'
+                    temp_image_paths.append(remote_path)
+                except (NoCredentialsError, PartialCredentialsError) as e:
+                    print(f"Error uploading to Contabo: {e}")
+                    return None
 
             
             # await page.screenshot(path=temp_image_path, clip={'x': 0, 'y': 0, 'width': clip_width, 'height': clip_height})
