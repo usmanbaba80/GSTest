@@ -1821,7 +1821,9 @@ async def take_screenshot(page, url, output_path, full_page):
         screenshot_path, slices = await take_large_screenshot(page, dimensions, output_path)
     else:
         # await page.screenshot(path=output_path, full_page=full_page, timeout=180000)
+        print("Before Main Screenshot")
         screenshot_bytes = await page.screenshot(full_page=True, type='png', timeout=180000)
+        print("After Main Screenshot")
         # Upload screenshot to Contabo storage
         # try:
         #     s3_client.upload_file(output_path, 'gsdatasync', f'screenshots{os.path.basename(output_path)}', ExtraArgs={'ACL': 'public-read', 'ContentType': 'image/png'})
@@ -1845,13 +1847,13 @@ async def take_screenshot(page, url, output_path, full_page):
     # return links, output_path[1]
 
 def slice_and_stretch_image(image_path, s3_client):
-
+    print("In slice_and_stretch_image function")
     # Convert bytes data to a NumPy array
     nparr = np.frombuffer(image_path, np.uint8)
     # Decode image data to OpenCV format
     image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-
+    print("Converted ByteImage to Image")
     # image = cv2.imread(image_path)
     height, width, _ = image.shape
     slice_width = 1920
@@ -1873,7 +1875,9 @@ def slice_and_stretch_image(image_path, s3_client):
                 cropped_slice = cv2.resize(cropped_slice, (slice_width, cropped_slice.shape[0]), interpolation=cv2.INTER_LINEAR)
 
             slice_filename = temp_image_path
+            print("Before saving Slices in buffer")
             is_success, buffer = cv2.imencode('.png', cropped_slice, [cv2.IMWRITE_PNG_COMPRESSION, 9])
+            print("After saving Slices in buffer")
             if is_success:
                 image_data = buffer.tobytes()
             # cv2.imwrite(slice_filename, cropped_slice, [cv2.IMWRITE_JPEG_QUALITY, 30])
@@ -1881,7 +1885,9 @@ def slice_and_stretch_image(image_path, s3_client):
 
             # Upload the image slice to the Contabo bucket
                 try:
+                    print("before uploading slice to bucket")
                     s3_client.upload_file(image_data, 'gsdatasync', f'{os.path.basename(slice_filename)}', ExtraArgs={'ACL': 'public-read', 'ContentType': 'image/png'})
+                    print("After uploading slice to bucket")
                     remote_path = f'{os.path.basename(slice_filename)}'
                     temp_image_paths.append(remote_path)
                 except (NoCredentialsError, PartialCredentialsError) as e:
