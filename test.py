@@ -2113,12 +2113,12 @@ def cronjob(time: int):
             for slice_path in slices:
                 # print(slice_path)
                 try:
-                    response = s3_client.delete_object(Bucket="gsdatasync", Key=slice_path)
+                    response = s3_client.delete_object(Bucket=f'gsdatasync', Key=slice_path)
                     if response['ResponseMetadata']['HTTPStatusCode'] == 204:
-                        print(f"Image successfully deleted from {"gsdatasync"}/{slice_path}")
+                        print(f"Image successfully deleted from {f'gsdatasync'}/{slice_path}")
                         return True
                     else:
-                        print(f"Failed to delete image from {"gsdatasync"}/{slice_path}. Response: {response}")
+                        print(f"Failed to delete image from {f'gsdatasync'}/{slice_path}. Response: {response}")
                         return False
                 except (NoCredentialsError, PartialCredentialsError) as e:
                     print(f"Error deleting from Contabo: {e}")
