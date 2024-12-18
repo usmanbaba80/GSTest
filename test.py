@@ -1740,8 +1740,7 @@ s3_client = boto3.client(
 # Endpoint to take a query parameter and fetch results
 @app.get("/search/")
 def search(query: str = Query(..., description="Search query"), searchType: str = Query(..., description="Type of search results")):
-    # Construct the URL with the query parameter
-    # if searchType == "news":
+    
     print(searchType)
     if searchType == "general":
         url = f"https://www.google.com/search?q={query}&gl=us"
@@ -1762,10 +1761,6 @@ def search(query: str = Query(..., description="Search query"), searchType: str 
     end_time = time.time()
     execution_time = end_time - start_time
     
-    # return {
-    #     "execution_time": execution_time,
-    #     "response": response.text
-    # }
     if searchType == "general":
         print("In General")
         data = []
@@ -1822,41 +1817,26 @@ async def take_screenshot(page, url, output_path, full_page):
         # screenshot_path, slices = await take_large_screenshot(page, dimensions, output_path)
         slices = await take_large_screenshot(page, dimensions, s3_client)
     else:
-        # await page.screenshot(path=output_path, full_page=full_page, timeout=180000)
-        print("Before Main Screenshot")
+        
+        # print("Before Main Screenshot")
         screenshot_bytes = await page.screenshot(full_page=True, type='png', timeout=180000)
-        print("After Main Screenshot")
-        # Upload screenshot to Contabo storage
-        # try:
-        #     s3_client.upload_file(output_path, 'gsdatasync', f'screenshots{os.path.basename(output_path)}', ExtraArgs={'ACL': 'public-read', 'ContentType': 'image/png'})
-        #     remote_path = f'https://usc1.contabostorage.com/gsdatasync/{os.path.basename(output_path)}'
-        # except (NoCredentialsError, PartialCredentialsError) as e:
-        #     print(f"Error uploading to Contabo: {e}")
-        #     return None
+        # print("After Main Screenshot")
+        
 
         slices = slice_and_stretch_image(screenshot_bytes, s3_client)
-        print(f"Screenshot saved at {slices}")
+        #print(f"Screenshot saved at {slices}")
 
     return links, slices
 
-    # if full_page and (dimensions['width'] > 32767 or dimensions['height'] > 32767):
-    #     output_path = await take_large_screenshot(page, dimensions, output_path)
-    # else:
-    #     await page.screenshot(path=output_path, full_page=full_page, timeout=180000)
-    #     output_path = slice_and_stretch_image(output_path, "https://usc1.contabostorage.com/gsdatasync/")
-    #     print(f"Screenshot saved at {output_path[0]}")
-
-    # return links, output_path[1]
-
 def slice_and_stretch_image(image_path, s3_client):
-    print("In slice_and_stretch_image function")
+    #print("In slice_and_stretch_image function")
     # Convert bytes data to a NumPy array
     nparr = np.frombuffer(image_path, np.uint8)
     # Decode image data to OpenCV format
     image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-    print("Converted ByteImage to Image")
-    # image = cv2.imread(image_path)
+    #print("Converted ByteImage to Image")
+    
     height, width, _ = image.shape
     slice_width = 1920
     slice_height = 1080
@@ -1883,9 +1863,6 @@ def slice_and_stretch_image(image_path, s3_client):
             if is_success:
                 image_data = buffer.tobytes()
                 image_file_obj = io.BytesIO(image_data)
-                # image_data = buffer.tobytes()
-            # cv2.imwrite(slice_filename, cropped_slice, [cv2.IMWRITE_JPEG_QUALITY, 30])
-            # print(f"Saved stretched slice: {slice_filename}")
 
             # Upload the image slice to the Contabo bucket
                 try:
@@ -1903,36 +1880,6 @@ def slice_and_stretch_image(image_path, s3_client):
 
     return temp_image_paths
 
-# def slice_and_stretch_image(image_path, output_folder):
-#     image = cv2.imread(image_path)
-#     height, width, _ = image.shape
-#     slice_width = 1920
-#     slice_height = 1080
-    
-#     if not os.path.exists(output_folder):
-#         os.makedirs(output_folder)
-#     temp_image_paths = []
-#     slice_count = 1
-
-#     for y in range(0, height, slice_height):
-#         for x in range(0, width, slice_width):
-#             unique_id = uuid.uuid4().hex
-#             end_x = min(x + slice_width, width)
-#             end_y = min(y + slice_height, height)
-#             temp_image_path = f'{output_folder}{unique_id}_{end_x}_{end_y}.png'
-#             # Crop the image slice
-#             cropped_slice = image[y:end_y, x:end_x]
-            
-#             if cropped_slice.shape[1] != slice_width:
-#                 cropped_slice = cv2.resize(cropped_slice, (slice_width, cropped_slice.shape[0]), interpolation=cv2.INTER_LINEAR)
-            
-#             slice_filename = temp_image_path
-#             cv2.imwrite(slice_filename, cropped_slice, [cv2.IMWRITE_JPEG_QUALITY, 30])
-#             print(f"Saved stretched slice: {slice_filename}")
-#             temp_image_paths.append(temp_image_path)
-            
-#             slice_count += 1
-#     return [output_folder, temp_image_paths]
 
 async def take_large_screenshot(page, dimensions, s3_client):
     scroll_width = dimensions['width']
@@ -1949,46 +1896,20 @@ async def take_large_screenshot(page, dimensions, s3_client):
             clip_width = min(viewport_width, scroll_width - x)
             clip_height = min(viewport_height, scroll_height - y)
             temp_image_path = f'{unique_id}_{x}_{y}.png'
-            ##################################
-            # print("Before saving Slices in buffer")
-            # is_success, buffer = cv2.imencode('.png', cropped_slice, [cv2.IMWRITE_PNG_COMPRESSION, 9])
-            # print("After saving Slices in buffer")
-            # if is_success:
-            #     image_data = buffer.tobytes()
-            #     image_file_obj = io.BytesIO(image_data)
-            ##################################
+            
             screenshot_bytes = await page.screenshot(type='png', clip={'x': 0, 'y': 0, 'width': clip_width, 'height': clip_height})
             image_file_obj = io.BytesIO(screenshot_bytes)
-            # nparr = np.frombuffer(screenshot_bytes, np.uint8)
-            # # Decode image data to OpenCV format
-            # image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            # # Encode the image as PNG and write to a BytesIO object
-            # is_success, buffer = cv2.imencode('.png', image, [cv2.IMWRITE_PNG_COMPRESSION, 9])
-            # if is_success:
-            #     image_file_obj = io.BytesIO(buffer)
+            
 
             try:
-                print("before uploading slice to bucket of large Pages")
+                
                 s3_client.upload_fileobj(image_file_obj, 'gsdatasync', f'{os.path.basename(temp_image_path)}', ExtraArgs={'ACL': 'public-read', 'ContentType': 'image/png'})
-                # s3_client.upload_file(image_data, 'gsdatasync', f'{os.path.basename(slice_filename)}', ExtraArgs={'ACL': 'public-read', 'ContentType': 'image/png'})
-                print("After uploading slice to bucket of large Pages")
                 remote_path = f'{os.path.basename(temp_image_path)}'
                 temp_image_paths.append(remote_path)
             except (NoCredentialsError, PartialCredentialsError) as e:
-                print(f"Error uploading to Contabo: {e}")
+                # print(f"Error uploading to Contabo: {e}")
                 return None
 
-            
-            # await page.screenshot(path=temp_image_path, clip={'x': 0, 'y': 0, 'width': clip_width, 'height': clip_height})
-            # temp_image_paths.append(temp_image_path)
-            
-    # for temp_image_path in temp_image_paths:
-    #     temp_image = Image.open(temp_image_path)
-    #     x, y = map(int, temp_image_path.replace(output_path, '').replace('.png', '').split('_')[1:])
-    #     stitch_image.paste(temp_image, (x, y))
-        
-    # stitch_image.save(output_path)
-    # print(f"Large screenshot saved at {output_path}")
     return temp_image_paths
 
 @app.post("/screenshot/")
@@ -2136,11 +2057,8 @@ def cronjob(time: int):
         old_records = get_old_records(time)
         print("22222")
         for record in old_records:
-            # Delete images
-            # print(record)
+            
             slices = json.loads(record[1])
-            # slices = json.loads(record['slices'])
-            # print(slices)
             for slice_path in slices:
                 # print(slice_path)
                 try:
@@ -2157,9 +2075,6 @@ def cronjob(time: int):
                 except Exception as e:
                     print(f"Unexpected error: {e}")
                     return False
-                # if os.path.exists(slice_path):
-                #     os.remove(slice_path)
-                #     print(f"Deleted slice: {slice_path}")
 
             # Remove record from the database
             delete_record(record[0])
@@ -2180,11 +2095,7 @@ def get_old_records(time):
         }
     )
     try:
-        # with connection.cursor() as cursor:
-        #     sql = "SELECT id, slices FROM screenshots WHERE timestamp_column > NOW() - INTERVAL {time} HOUR"
-        #     cursor.execute(sql)
-        #     result = cursor.fetchall()
-        #     return result
+        
         with connection.cursor() as cursor:
             # Use parameterized query to safely insert the time value
             sql = "SELECT id, slices FROM screenshots WHERE timestamp_column < NOW() - INTERVAL %s HOUR"
