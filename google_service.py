@@ -6,7 +6,7 @@ import secrets
 import zipfile
 from datetime import datetime, timezone
 from io import BytesIO
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlencode
 
 import httpx
@@ -21,29 +21,76 @@ GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 DATA_PORTABILITY_INITIATE_URL = "https://dataportability.googleapis.com/v1/portabilityArchive:initiate"
 DATA_PORTABILITY_STATE_URL = "https://dataportability.googleapis.com/v1/archiveJobs/{job_id}/portabilityArchiveState"
 
-_oauth_states: Dict[str, float] = {}
+# state -> {"flow": "identity"|"portability", "user_id": optional int, "created_at": float}
+_oauth_states: Dict[str, Dict[str, Any]] = {}
 
 
 def is_google_oauth_configured() -> bool:
     return bool(settings.google_client_id and settings.google_client_secret and settings.google_redirect_uri)
 
 
-def build_google_auth_url() -> tuple[str, str]:
-    if not is_google_oauth_configured():
-        raise ValueError("Google OAuth is not configured. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI.")
+def _identity_scopes() -> str:
+    return (settings.google_oauth_scopes_identity or "openid email profile").strip()
 
-    state = secrets.token_urlsafe(32)
-    _oauth_states[state] = datetime.now(timezone.utc).timestamp()
+
+def _portability_scopes() -> str:
+    return (settings.google_oauth_scopes_portability or "").strip()
+
+
+def create_oauth_state(flow: str, user_id: Optional[int] = None) -> str:
+    state = f"{flow}.{secrets.token_urlsafe(24)}"
+    _oauth_states[state] = {
+        "flow": flow,
+        "user_id": user_id,
+        "created_at": datetime.now(timezone.utc).timestamp(),
+    }
+    return state
+
+
+def pop_oauth_state(state: Optional[str]) -> Optional[Dict[str, Any]]:
+    if not state:
+        return None
+    return _oauth_states.pop(state, None)
+
+
+def build_google_auth_url(
+    flow: str = "identity",
+    user_id: Optional[int] = None,
+) -> Tuple[str, str]:
+    """
+    Build Google OAuth URL.
+
+    Google rule: Data Portability scopes cannot be mixed with non-DP scopes.
+    - flow="identity": openid email profile
+    - flow="portability": chrome.bookmarks + chrome.history only
+    """
+    if not is_google_oauth_configured():
+        raise ValueError(
+            "Google OAuth is not configured. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI."
+        )
+
+    if flow == "identity":
+        scope = _identity_scopes()
+    elif flow == "portability":
+        scope = _portability_scopes()
+        if not scope:
+            raise ValueError("GOOGLE_OAUTH_SCOPES_PORTABILITY is empty")
+        if user_id is None:
+            raise ValueError("user_id is required for portability OAuth flow")
+    else:
+        raise ValueError("flow must be 'identity' or 'portability'")
+
+    state = create_oauth_state(flow, user_id=user_id)
 
     params = {
         "client_id": settings.google_client_id,
         "redirect_uri": settings.google_redirect_uri,
         "response_type": "code",
-        "scope": settings.google_oauth_scopes,
+        "scope": scope,
         "access_type": "offline",
         "prompt": "consent",
         "state": state,
-        "include_granted_scopes": "true",
+        # Do NOT set include_granted_scopes for Data Portability requests
     }
     return f"{GOOGLE_AUTH_URL}?{urlencode(params)}", state
 
@@ -101,7 +148,12 @@ async def initiate_portability_export(access_token: str, resource: str) -> str:
         return data["archiveJobId"]
 
 
-async def poll_portability_job(access_token: str, job_id: str, max_attempts: int = 30, delay_seconds: float = 2.0) -> Dict[str, Any]:
+async def poll_portability_job(
+    access_token: str,
+    job_id: str,
+    max_attempts: int = 30,
+    delay_seconds: float = 2.0,
+) -> Dict[str, Any]:
     url = DATA_PORTABILITY_STATE_URL.format(job_id=job_id)
     headers = {"Authorization": f"Bearer {access_token}"}
 
@@ -268,10 +320,3 @@ async def sync_google_bookmarks_and_history(
         result.update({"status": "failed", "message": str(exc)})
 
     return result
-
-
-def start_google_sync_background(get_db_connection, user_id: int, access_token: str, auth_service) -> None:
-    async def _run_sync():
-        await sync_google_bookmarks_and_history(get_db_connection, user_id, access_token, auth_service)
-
-    asyncio.create_task(_run_sync())

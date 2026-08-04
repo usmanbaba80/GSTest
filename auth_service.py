@@ -515,6 +515,9 @@ def build_auth_response(
     history: Optional[List[HistoryItem]] = None,
     google_sync: Optional[dict] = None,
     message: str = "Authentication successful",
+    needs_portability_consent: bool = False,
+    authorization_url: Optional[str] = None,
+    step: Optional[str] = None,
 ) -> dict:
     token = create_access_token(user_row["id"], user_row["email"], user_row["auth_provider"])
     return {
@@ -528,6 +531,9 @@ def build_auth_response(
         "bookmarks": bookmarks,
         "history": history,
         "google_sync": google_sync,
+        "needs_portability_consent": needs_portability_consent,
+        "authorization_url": authorization_url,
+        "step": step,
     }
 
 

@@ -768,13 +768,17 @@ Example error body (FastAPI):
 
 ### Google login flow
 
+Google forbids mixing Data Portability scopes with `openid/email/profile`, so login is **two steps**:
+
 ```
-1. GET  /auth/google/url
+1. GET  /auth/google/url          (identity scopes only)
 2. Open authorization_url in browser
 3. Google redirects to GET /auth/google/callback?code=...
-4. The HTML page automatically calls POST /auth/google/callback
-5. Page stores access_token in localStorage and shows sync result
-6. Later refresh with POST /auth/google/sync
+4. Page calls POST /auth/google/callback → JWT + needs_portability_consent
+5. Page auto-opens second Google consent (Chrome bookmarks/history only)
+6. Google redirects to callback again
+7. Page completes sync and shows bookmarks/history
+8. Later refresh with POST /auth/google/sync
 ```
 
 ### Recommended client storage

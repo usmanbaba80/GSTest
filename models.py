@@ -172,6 +172,10 @@ class AuthResponse(BaseModel):
     bookmarks: Optional[List[BookmarkItem]] = None
     history: Optional[List[HistoryItem]] = None
     google_sync: Optional[dict] = None
+    # Set after Google identity step; client must open this URL for Chrome data scopes
+    needs_portability_consent: bool = False
+    authorization_url: Optional[str] = None
+    step: Optional[str] = None  # "identity" | "complete"
 
 
 class GoogleAuthUrlResponse(BaseModel):

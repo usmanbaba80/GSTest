@@ -165,6 +165,17 @@
           localStorage.setItem("token_type", data.token_type || "bearer");
         }
 
+        // Step 1 done: Google forbids mixing identity + Data Portability scopes.
+        // Automatically continue to the second consent screen.
+        if (data.needs_portability_consent && data.authorization_url) {
+          subtitleEl.textContent = "Identity verified";
+          statusEl.className = "status loading";
+          statusEl.innerHTML =
+            '<span class="spinner"></span>Redirecting to grant Chrome bookmarks &amp; history access…';
+          window.location.href = data.authorization_url;
+          return;
+        }
+
         const user = data.user || {};
         const sync = data.google_sync || {};
         const bookmarksCount = Array.isArray(data.bookmarks) ? data.bookmarks.length : (sync.bookmarks_count ?? 0);
