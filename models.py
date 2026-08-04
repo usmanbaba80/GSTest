@@ -100,7 +100,7 @@ class SignupRequest(BaseModel):
     """Request model for app signup."""
 
     email: str = Field(..., min_length=5, max_length=255, description="User email address")
-    password: str = Field(..., min_length=8, max_length=128, description="Password (min 8 characters)")
+    password: str = Field(..., min_length=8, max_length=72, description="Password (8-72 characters; bcrypt limit)")
     full_name: Optional[str] = Field(None, max_length=255, description="Display name")
 
     @validator('email')

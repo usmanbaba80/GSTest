@@ -4,25 +4,43 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import aiomysql
+import bcrypt
 import jwt
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from passlib.context import CryptContext
 
 from config import settings
 from logger import logger
 from models import BookmarkItem, HistoryItem, UserProfile
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer_scheme = HTTPBearer(auto_error=False)
+
+# bcrypt only uses the first 72 bytes of a password
+_BCRYPT_MAX_PASSWORD_BYTES = 72
+
+
+def _password_bytes(password: str) -> bytes:
+    raw = password.encode("utf-8")
+    if len(raw) > _BCRYPT_MAX_PASSWORD_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Password cannot be longer than {_BCRYPT_MAX_PASSWORD_BYTES} bytes",
+        )
+    return raw
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(_password_bytes(password), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"),
+            hashed_password.encode("utf-8"),
+        )
+    except (ValueError, TypeError):
+        return False
 
 
 def create_access_token(user_id: int, email: str, auth_provider: str) -> str:
@@ -59,13 +77,15 @@ def _row_to_user_profile(row: Dict[str, Any]) -> UserProfile:
 
 
 async def create_app_user(get_db_connection, email: str, password: str, full_name: Optional[str]) -> Dict[str, Any]:
+    # Hash before opening a DB connection so bcrypt errors are not misreported as DB failures
+    password_hash = hash_password(password)
+
     async with get_db_connection() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
             await cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
             if await cursor.fetchone():
                 raise HTTPException(status_code=409, detail="Email already registered. Please login instead.")
 
-            password_hash = hash_password(password)
             await cursor.execute(
                 """
                 INSERT INTO users (email, password_hash, full_name, auth_provider, last_login)
