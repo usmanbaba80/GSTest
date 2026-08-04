@@ -1,6 +1,53 @@
-fastapi
-uvicorn
-pydantic
-playwright
-psutil
-gunicorn
+# Core FastAPI and web framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+
+# Data validation and settings
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# Browser automation (optimized for high-load)
+playwright>=1.39.0
+
+# HTTP client with connection pooling
+httpx>=0.25.0
+
+# Image processing (optimized builds)
+opencv-python-headless>=4.8.0  # Headless version for better performance
+
+# Database connectivity (with connection pooling)
+PyMySQL>=1.1.0
+aiomysql>=0.2.0
+mysql-connector-python>=8.2.0
+
+# Web scraping and parsing
+beautifulsoup4>=4.12.0
+
+# Numerical processing
+numpy>=1.24.0
+
+# Cloud storage
+boto3>=1.29.0
+
+# Configuration management
+python-dotenv>=1.0.0
+typing-extensions>=4.8.0
+cryptography>=42.0.0          # For secure cryptographic operations
+
+# Additional high-performance dependencies
+aiofiles>=23.2.1              # Async file operations
+asyncio-throttle>=1.0.2       # Rate limiting utilities
+psutil>=5.9.0                 # System monitoring
+memory-profiler>=0.61.0       # Memory usage monitoring (development)
+
+# Optional: For production monitoring
+# prometheus-client>=0.17.1    # Metrics collection
+# structlog>=23.1.0            # Structured logging
+
+# GeoIP2 for GeoLite2 local DB lookup
+geoip2>=4.8.0
+
+# User authentication
+PyJWT>=2.8.0
+passlib[bcrypt]>=1.7.4
+bcrypt>=4.1.0
