@@ -11,6 +11,10 @@ AUTH_TABLES_SQL = [
         full_name VARCHAR(255) NULL,
         profile_picture VARCHAR(512) NULL,
         auth_provider VARCHAR(32) NOT NULL DEFAULT 'app',
+        email_verified TINYINT(1) NOT NULL DEFAULT 0,
+        otp_code_hash VARCHAR(255) NULL,
+        otp_expires_at TIMESTAMP NULL,
+        otp_last_sent_at TIMESTAMP NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         last_login TIMESTAMP NULL,
         UNIQUE KEY unique_email (email)
@@ -44,6 +48,14 @@ AUTH_TABLES_SQL = [
     """,
 ]
 
+# For existing deployments created before email verification was added
+AUTH_ALTER_SQL = [
+    "ALTER TABLE users ADD COLUMN email_verified TINYINT(1) NOT NULL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN otp_code_hash VARCHAR(255) NULL",
+    "ALTER TABLE users ADD COLUMN otp_expires_at TIMESTAMP NULL",
+    "ALTER TABLE users ADD COLUMN otp_last_sent_at TIMESTAMP NULL",
+]
+
 
 async def init_auth_tables(get_db_connection):
     """Create authentication-related tables if they do not exist."""
@@ -52,6 +64,17 @@ async def init_auth_tables(get_db_connection):
             async with conn.cursor() as cursor:
                 for statement in AUTH_TABLES_SQL:
                     await cursor.execute(statement)
+
+                for statement in AUTH_ALTER_SQL:
+                    try:
+                        await cursor.execute(statement)
+                    except Exception as alter_exc:
+                        # Ignore "duplicate column" on already-migrated databases
+                        msg = str(alter_exc).lower()
+                        if "duplicate column" in msg or "exists" in msg:
+                            continue
+                        logger.warning(f"Auth schema alter skipped: {alter_exc}")
+
         logger.info("✅ Authentication tables initialized")
     except Exception as exc:
         logger.error(f"❌ Failed to initialize authentication tables: {exc}")

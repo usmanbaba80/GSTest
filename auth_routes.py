@@ -1,7 +1,6 @@
-"""Authentication API routes: app signup/login, bookmarks, and history."""
+"""Authentication API routes: app signup/login, email OTP, bookmarks, and history."""
 
 from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -12,8 +11,11 @@ from models import (
     CreateBookmarkRequest,
     CreateHistoryRequest,
     LoginRequest,
+    ResendOtpRequest,
+    SignupPendingResponse,
     SignupRequest,
     UserProfile,
+    VerifyEmailRequest,
 )
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -24,17 +26,25 @@ def _db():
     return get_db_connection
 
 
-@router.post("/signup", response_model=AuthResponse)
+@router.post("/signup", response_model=SignupPendingResponse)
 async def signup(request: SignupRequest):
-    """Register a new user with email and password."""
+    """
+    Register a new user and send email OTP.
+    Account stays unverified until POST /auth/verify-email succeeds.
+    """
     try:
-        user = await auth_service.create_app_user(
+        result = await auth_service.signup_with_otp(
             _db(), request.email, request.password, request.full_name
         )
-        bookmarks, history = await auth_service.get_user_auth_data(_db(), user["id"])
-        return auth_service.build_auth_response(
-            user, bookmarks=bookmarks, history=history, message="Signup successful"
-        )
+        return {
+            "status_code": 200,
+            "success": True,
+            "message": "Signup successful. Enter the OTP sent to your email to verify your account.",
+            "email": result["email"],
+            "email_verified": False,
+            "requires_verification": True,
+            "otp_expires_in": result["otp_expires_in"],
+        }
     except HTTPException:
         raise
     except Exception as exc:
@@ -42,9 +52,49 @@ async def signup(request: SignupRequest):
         raise HTTPException(status_code=500, detail="Signup failed") from exc
 
 
+@router.post("/verify-email", response_model=AuthResponse)
+async def verify_email(request: VerifyEmailRequest):
+    """Verify signup email with OTP and return JWT."""
+    try:
+        user = await auth_service.verify_email_otp(_db(), request.email, request.otp_code)
+        bookmarks, history = await auth_service.get_user_auth_data(_db(), user["id"])
+        return auth_service.build_auth_response(
+            user,
+            bookmarks=bookmarks,
+            history=history,
+            message="Email verified successfully",
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Email verification failed: {exc}")
+        raise HTTPException(status_code=500, detail="Email verification failed") from exc
+
+
+@router.post("/resend-otp", response_model=SignupPendingResponse)
+async def resend_otp(request: ResendOtpRequest):
+    """Resend verification OTP for an unverified account."""
+    try:
+        result = await auth_service.resend_email_otp(_db(), request.email)
+        return {
+            "status_code": 200,
+            "success": True,
+            "message": "A new verification code has been sent to your email.",
+            "email": result["email"],
+            "email_verified": False,
+            "requires_verification": True,
+            "otp_expires_in": result["otp_expires_in"],
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Resend OTP failed: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to resend OTP") from exc
+
+
 @router.post("/login", response_model=AuthResponse)
 async def login(request: LoginRequest):
-    """Login with email and password. Requires prior signup."""
+    """Login with email and password. Requires prior signup and email verification."""
     try:
         user = await auth_service.authenticate_app_user(_db(), request.email, request.password)
         bookmarks, history = await auth_service.get_user_auth_data(_db(), user["id"])

@@ -149,11 +149,12 @@ class UserProfile(BaseModel):
     full_name: Optional[str] = None
     profile_picture: Optional[str] = None
     auth_provider: str
+    email_verified: bool = False
     created_at: Optional[str] = None
 
 
 class AuthResponse(BaseModel):
-    """Login/signup response with JWT."""
+    """Login/verify response with JWT."""
 
     status_code: int = 200
     success: bool = True
@@ -164,6 +165,43 @@ class AuthResponse(BaseModel):
     user: UserProfile
     bookmarks: Optional[List[BookmarkItem]] = None
     history: Optional[List[HistoryItem]] = None
+
+
+class SignupPendingResponse(BaseModel):
+    """Signup succeeded; email verification required before login."""
+
+    status_code: int = 200
+    success: bool = True
+    message: str
+    email: str
+    email_verified: bool = False
+    requires_verification: bool = True
+    otp_expires_in: int
+
+
+class VerifyEmailRequest(BaseModel):
+    """Verify signup email with OTP code."""
+
+    email: str = Field(..., description="Signup email address")
+    otp_code: str = Field(..., min_length=4, max_length=8, description="OTP code from email")
+
+    @validator('email')
+    def normalize_email(cls, v):
+        return v.lower().strip()
+
+    @validator('otp_code')
+    def normalize_otp(cls, v):
+        return v.strip()
+
+
+class ResendOtpRequest(BaseModel):
+    """Resend signup verification OTP."""
+
+    email: str = Field(..., description="Signup email address")
+
+    @validator('email')
+    def normalize_email(cls, v):
+        return v.lower().strip()
 
 
 class CreateBookmarkRequest(BaseModel):

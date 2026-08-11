@@ -1,6 +1,8 @@
-"""User authentication: signup, login, JWT, and user data access."""
+"""User authentication: signup, login, JWT, OTP email verification, and user data access."""
 
 from datetime import datetime, timedelta, timezone
+from hashlib import sha256
+from secrets import randbelow
 from typing import Any, Dict, List, Optional
 
 import aiomysql
@@ -9,6 +11,7 @@ import jwt
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+import email_service
 from config import settings
 from models import BookmarkItem, HistoryItem, UserProfile
 
@@ -41,6 +44,14 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         return False
 
 
+def _hash_otp(otp_code: str) -> str:
+    return sha256(otp_code.encode("utf-8")).hexdigest()
+
+
+def _generate_otp() -> str:
+    return f"{randbelow(1_000_000):06d}"
+
+
 def create_access_token(user_id: int, email: str, auth_provider: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expire_minutes)
     payload = {
@@ -70,8 +81,57 @@ def _row_to_user_profile(row: Dict[str, Any]) -> UserProfile:
         full_name=row.get("full_name"),
         profile_picture=row.get("profile_picture"),
         auth_provider=row.get("auth_provider") or "app",
+        email_verified=bool(row.get("email_verified")),
         created_at=created_at.isoformat() if created_at else None,
     )
+
+
+def _is_email_verified(row: Dict[str, Any]) -> bool:
+    return bool(row.get("email_verified"))
+
+
+async def _set_and_send_otp(get_db_connection, user: Dict[str, Any]) -> int:
+    """Generate OTP, store hash, send email. Returns expiry seconds."""
+    if not email_service.is_email_configured() and not settings.email_otp_debug:
+        raise HTTPException(
+            status_code=503,
+            detail="Email verification is not configured. Set BREVO_API_KEY and BREVO_SENDER_EMAIL.",
+        )
+
+    now = datetime.now(timezone.utc)
+    last_sent = user.get("otp_last_sent_at")
+    if last_sent:
+        if last_sent.tzinfo is None:
+            last_sent = last_sent.replace(tzinfo=timezone.utc)
+        elapsed = (now - last_sent).total_seconds()
+        if elapsed < settings.otp_resend_cooldown_seconds:
+            wait_for = int(settings.otp_resend_cooldown_seconds - elapsed)
+            raise HTTPException(
+                status_code=429,
+                detail=f"Please wait {wait_for} seconds before requesting another code",
+            )
+
+    otp_code = _generate_otp()
+    otp_hash = _hash_otp(otp_code)
+    expires_at = now + timedelta(minutes=settings.otp_expire_minutes)
+
+    async with get_db_connection() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cursor:
+            await cursor.execute(
+                """
+                UPDATE users
+                SET otp_code_hash = %s, otp_expires_at = %s, otp_last_sent_at = %s
+                WHERE id = %s
+                """,
+                (otp_hash, expires_at, now, user["id"]),
+            )
+
+    try:
+        await email_service.send_otp_email(user["email"], otp_code, user.get("full_name"))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to send verification email: {exc}") from exc
+
+    return settings.otp_expire_minutes * 60
 
 
 async def create_app_user(get_db_connection, email: str, password: str, full_name: Optional[str]) -> Dict[str, Any]:
@@ -79,20 +139,38 @@ async def create_app_user(get_db_connection, email: str, password: str, full_nam
 
     async with get_db_connection() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
-            await cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
-            if await cursor.fetchone():
-                raise HTTPException(status_code=409, detail="Email already registered. Please login instead.")
+            await cursor.execute("SELECT id, email_verified FROM users WHERE email = %s", (email,))
+            existing = await cursor.fetchone()
+            if existing:
+                if existing.get("email_verified"):
+                    raise HTTPException(status_code=409, detail="Email already registered. Please login instead.")
+                raise HTTPException(
+                    status_code=409,
+                    detail="Email already registered but not verified. Use /auth/resend-otp then /auth/verify-email.",
+                )
 
             await cursor.execute(
                 """
-                INSERT INTO users (email, password_hash, full_name, auth_provider, last_login)
-                VALUES (%s, %s, %s, 'app', NOW())
+                INSERT INTO users (
+                    email, password_hash, full_name, auth_provider,
+                    email_verified, last_login
+                )
+                VALUES (%s, %s, %s, 'app', 0, NULL)
                 """,
                 (email, password_hash, full_name),
             )
             user_id = cursor.lastrowid
             await cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
             return await cursor.fetchone()
+
+
+async def signup_with_otp(get_db_connection, email: str, password: str, full_name: Optional[str]) -> Dict[str, Any]:
+    user = await create_app_user(get_db_connection, email, password, full_name)
+    otp_expires_in = await _set_and_send_otp(get_db_connection, user)
+    return {
+        "email": user["email"],
+        "otp_expires_in": otp_expires_in,
+    }
 
 
 async def authenticate_app_user(get_db_connection, email: str, password: str) -> Dict[str, Any]:
@@ -108,12 +186,82 @@ async def authenticate_app_user(get_db_connection, email: str, password: str) ->
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if not verify_password(password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not _is_email_verified(user):
+        raise HTTPException(
+            status_code=403,
+            detail="Email not verified. Check your inbox for the OTP or call /auth/resend-otp.",
+        )
 
     async with get_db_connection() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
             await cursor.execute("UPDATE users SET last_login = NOW() WHERE id = %s", (user["id"],))
 
     return user
+
+
+async def verify_email_otp(get_db_connection, email: str, otp_code: str) -> Dict[str, Any]:
+    async with get_db_connection() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cursor:
+            await cursor.execute(
+                "SELECT * FROM users WHERE email = %s AND auth_provider = 'app'",
+                (email,),
+            )
+            user = await cursor.fetchone()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found. Please signup first.")
+
+    if _is_email_verified(user):
+        return user
+
+    if not user.get("otp_code_hash") or not user.get("otp_expires_at"):
+        raise HTTPException(status_code=400, detail="No active verification code. Request a new one.")
+
+    expires_at = user["otp_expires_at"]
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) > expires_at:
+        raise HTTPException(status_code=400, detail="Verification code expired. Request a new one.")
+
+    if _hash_otp(otp_code) != user["otp_code_hash"]:
+        raise HTTPException(status_code=400, detail="Invalid verification code")
+
+    async with get_db_connection() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cursor:
+            await cursor.execute(
+                """
+                UPDATE users
+                SET email_verified = 1,
+                    otp_code_hash = NULL,
+                    otp_expires_at = NULL,
+                    last_login = NOW()
+                WHERE id = %s
+                """,
+                (user["id"],),
+            )
+            await cursor.execute("SELECT * FROM users WHERE id = %s", (user["id"],))
+            return await cursor.fetchone()
+
+
+async def resend_email_otp(get_db_connection, email: str) -> Dict[str, Any]:
+    async with get_db_connection() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cursor:
+            await cursor.execute(
+                "SELECT * FROM users WHERE email = %s AND auth_provider = 'app'",
+                (email,),
+            )
+            user = await cursor.fetchone()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found. Please signup first.")
+    if _is_email_verified(user):
+        raise HTTPException(status_code=400, detail="Email is already verified. Please login.")
+
+    otp_expires_in = await _set_and_send_otp(get_db_connection, user)
+    return {
+        "email": user["email"],
+        "otp_expires_in": otp_expires_in,
+    }
 
 
 async def get_user_by_id(get_db_connection, user_id: int) -> Optional[Dict[str, Any]]:

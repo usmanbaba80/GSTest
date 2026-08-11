@@ -97,12 +97,22 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 10080  # 7 days
 
+    # Email verification via Brevo (free tier ~300 emails/day)
+    brevo_api_key: Optional[str] = None
+    brevo_sender_email: Optional[str] = None
+    brevo_sender_name: str = "GS App"
+    otp_expire_minutes: int = 10
+    otp_resend_cooldown_seconds: int = 60
+    # If True and Brevo is not configured, OTP is logged instead of emailed (local/dev only)
+    email_otp_debug: bool = False
+
     # GeoIP settings (GeoLite2 local DB)
     geolite2_db_path: Optional[str] = "GeoLite2-Country.mmdb"  # e.g., /usr/local/share/GeoIP/GeoLite2-Country.mmdb
     
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"  # Allow leftover env vars (e.g. old GOOGLE_* keys) without crashing
 
 # Global settings instance
 settings = Settings() 

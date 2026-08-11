@@ -1,6 +1,6 @@
 # Authentication & User Data API Documentation
 
-App email/password authentication with JWT, plus bookmarks and browsing history APIs.
+App email/password authentication with **email OTP verification (Brevo)**, JWT, bookmarks, and history.
 
 Interactive docs: `/docs`
 
@@ -10,10 +10,19 @@ Interactive docs: `/docs`
 
 | Feature | Supported |
 |---------|-----------|
-| Signup / login with email + password | Yes |
-| Bookmarks (create / list / delete) | Yes |
-| History (record / list / delete / clear) | Yes |
+| Signup with email + password | Yes |
+| Email OTP verification (Brevo, free tier) | Yes |
+| Login (only after email verified) | Yes |
+| Bookmarks / History | Yes |
 | Login with Google | Removed |
+
+Flow:
+
+```text
+1. POST /auth/signup      → OTP emailed
+2. POST /auth/verify-email → JWT returned
+3. Later: POST /auth/login → JWT
+```
 
 Protected routes require:
 
@@ -29,13 +38,33 @@ Authorization: Bearer <access_token>
 JWT_SECRET_KEY=change-me-in-production
 JWT_ALGORITHM=HS256
 JWT_EXPIRE_MINUTES=10080
+
+# Brevo (recommended free production OTP provider)
+BREVO_API_KEY=your-brevo-api-key
+BREVO_SENDER_EMAIL=noreply@yourdomain.com
+BREVO_SENDER_NAME=GS App
+OTP_EXPIRE_MINUTES=10
+OTP_RESEND_COOLDOWN_SECONDS=60
+
+# Local/dev only: log OTP to server logs if Brevo is not set
+EMAIL_OTP_DEBUG=false
 ```
+
+### Brevo free setup (production)
+
+1. Create account at [brevo.com](https://www.brevo.com/)
+2. Verify your sender domain / sender email
+3. Create an API key (SMTP & API → API Keys)
+4. Put key + sender email in `.env`
+5. Free plan is enough for OTP (~300 emails/day)
 
 ---
 
 ## Auth endpoints
 
 ### `POST /auth/signup`
+
+Creates an **unverified** user and emails a 6-digit OTP. No JWT yet.
 
 ```json
 {
@@ -45,9 +74,44 @@ JWT_EXPIRE_MINUTES=10080
 }
 ```
 
-Password: 8–72 characters.
+Response:
+
+```json
+{
+  "status_code": 200,
+  "success": true,
+  "message": "Signup successful. Enter the OTP sent to your email to verify your account.",
+  "email": "user@example.com",
+  "email_verified": false,
+  "requires_verification": true,
+  "otp_expires_in": 600
+}
+```
+
+### `POST /auth/verify-email`
+
+```json
+{
+  "email": "user@example.com",
+  "otp_code": "123456"
+}
+```
+
+Returns JWT + user (same shape as login).
+
+### `POST /auth/resend-otp`
+
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+Cooldown-limited by `OTP_RESEND_COOLDOWN_SECONDS`.
 
 ### `POST /auth/login`
+
+Requires verified email.
 
 ```json
 {
@@ -56,7 +120,9 @@ Password: 8–72 characters.
 }
 ```
 
-### Auth response
+If unverified → `403` with message to verify / resend OTP.
+
+### Auth success response (verify-email / login)
 
 ```json
 {
@@ -72,6 +138,7 @@ Password: 8–72 characters.
     "full_name": "John Doe",
     "profile_picture": null,
     "auth_provider": "app",
+    "email_verified": true,
     "created_at": "2026-08-05T10:00:00"
   },
   "bookmarks": [],
@@ -89,19 +156,9 @@ Returns current user profile + bookmarks + history.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/auth/bookmarks` | List bookmarks (`limit` optional, default 100) |
+| `GET` | `/auth/bookmarks` | List bookmarks |
 | `POST` | `/auth/bookmarks` | Save bookmark |
 | `DELETE` | `/auth/bookmarks/{id}` | Delete bookmark |
-
-### Create bookmark
-
-```json
-{
-  "title": "FastAPI Docs",
-  "url": "https://fastapi.tiangolo.com",
-  "folder": "Dev"
-}
-```
 
 ---
 
@@ -109,22 +166,10 @@ Returns current user profile + bookmarks + history.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/auth/history` | List history (`limit` optional) |
+| `GET` | `/auth/history` | List history |
 | `POST` | `/auth/history` | Record a visit |
 | `DELETE` | `/auth/history/{id}` | Delete one entry |
 | `DELETE` | `/auth/history/clear` | Clear all history |
-
-### Record history
-
-```json
-{
-  "title": "Google Search",
-  "url": "https://www.google.com",
-  "visited_at": "2026-08-05T15:30:00Z"
-}
-```
-
-`visited_at` is optional (defaults to now).
 
 ---
 
@@ -133,15 +178,12 @@ Returns current user profile + bookmarks + history.
 | Method | Path | Auth |
 |--------|------|------|
 | `POST` | `/auth/signup` | Public |
+| `POST` | `/auth/verify-email` | Public |
+| `POST` | `/auth/resend-otp` | Public |
 | `POST` | `/auth/login` | Public |
 | `GET` | `/auth/me` | Bearer |
-| `GET` | `/auth/bookmarks` | Bearer |
-| `POST` | `/auth/bookmarks` | Bearer |
-| `DELETE` | `/auth/bookmarks/{id}` | Bearer |
-| `GET` | `/auth/history` | Bearer |
-| `POST` | `/auth/history` | Bearer |
-| `DELETE` | `/auth/history/{id}` | Bearer |
-| `DELETE` | `/auth/history/clear` | Bearer |
+| `GET/POST/DELETE` | `/auth/bookmarks...` | Bearer |
+| `GET/POST/DELETE` | `/auth/history...` | Bearer |
 
 ---
 
@@ -150,7 +192,8 @@ Returns current user profile + bookmarks + history.
 | File | Purpose |
 |------|---------|
 | `auth_routes.py` | HTTP endpoints |
-| `auth_service.py` | JWT, passwords, DB access |
-| `auth_db.py` | Table creation |
+| `auth_service.py` | JWT, passwords, OTP logic |
+| `email_service.py` | Brevo OTP email sender |
+| `auth_db.py` | Table creation / migration |
 | `models.py` | Request/response models |
-| `config.py` | JWT settings |
+| `config.py` | JWT + Brevo settings |
