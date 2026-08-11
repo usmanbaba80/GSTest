@@ -13,6 +13,7 @@ AUTH_TABLES_SQL = [
         auth_provider VARCHAR(32) NOT NULL DEFAULT 'app',
         email_verified TINYINT(1) NOT NULL DEFAULT 0,
         otp_code_hash VARCHAR(255) NULL,
+        otp_purpose VARCHAR(32) NULL,
         otp_expires_at TIMESTAMP NULL,
         otp_last_sent_at TIMESTAMP NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -52,6 +53,7 @@ AUTH_TABLES_SQL = [
 AUTH_ALTER_SQL = [
     "ALTER TABLE users ADD COLUMN email_verified TINYINT(1) NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN otp_code_hash VARCHAR(255) NULL",
+    "ALTER TABLE users ADD COLUMN otp_purpose VARCHAR(32) NULL",
     "ALTER TABLE users ADD COLUMN otp_expires_at TIMESTAMP NULL",
     "ALTER TABLE users ADD COLUMN otp_last_sent_at TIMESTAMP NULL",
 ]

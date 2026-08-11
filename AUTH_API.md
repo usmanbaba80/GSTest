@@ -13,6 +13,7 @@ Interactive docs: `/docs`
 | Signup with email + password | Yes |
 | Email OTP verification (Brevo, free tier) | Yes |
 | Login (only after email verified) | Yes |
+| Forgot / reset password (OTP via Brevo) | Yes |
 | Bookmarks / History | Yes |
 | Login with Google | Removed |
 
@@ -22,6 +23,10 @@ Flow:
 1. POST /auth/signup      → OTP emailed
 2. POST /auth/verify-email → JWT returned
 3. Later: POST /auth/login → JWT
+
+Forgot password:
+1. POST /auth/forgot-password → OTP emailed
+2. POST /auth/reset-password  → new password + JWT
 ```
 
 Protected routes require:
@@ -122,7 +127,43 @@ Requires verified email.
 
 If unverified → `403` with message to verify / resend OTP.
 
-### Auth success response (verify-email / login)
+### `POST /auth/forgot-password`
+
+Sends a password-reset OTP (same Brevo setup). Response is always generic so emails cannot be enumerated.
+
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+Response:
+
+```json
+{
+  "status_code": 200,
+  "success": true,
+  "message": "If an account exists for this email, a password reset code has been sent.",
+  "email": "user@example.com",
+  "email_verified": true,
+  "requires_verification": true,
+  "otp_expires_in": 600
+}
+```
+
+### `POST /auth/reset-password`
+
+```json
+{
+  "email": "user@example.com",
+  "otp_code": "123456",
+  "new_password": "newsecurepass123"
+}
+```
+
+Returns JWT + user (same shape as login).
+
+### Auth success response (verify-email / login / reset-password)
 
 ```json
 {
@@ -181,6 +222,8 @@ Returns current user profile + bookmarks + history.
 | `POST` | `/auth/verify-email` | Public |
 | `POST` | `/auth/resend-otp` | Public |
 | `POST` | `/auth/login` | Public |
+| `POST` | `/auth/forgot-password` | Public |
+| `POST` | `/auth/reset-password` | Public |
 | `GET` | `/auth/me` | Bearer |
 | `GET/POST/DELETE` | `/auth/bookmarks...` | Bearer |
 | `GET/POST/DELETE` | `/auth/history...` | Bearer |

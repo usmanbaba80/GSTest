@@ -204,6 +204,32 @@ class ResendOtpRequest(BaseModel):
         return v.lower().strip()
 
 
+class ForgotPasswordRequest(BaseModel):
+    """Request a password-reset OTP."""
+
+    email: str = Field(..., description="Registered email address")
+
+    @validator('email')
+    def normalize_email(cls, v):
+        return v.lower().strip()
+
+
+class ResetPasswordRequest(BaseModel):
+    """Reset password using email OTP."""
+
+    email: str = Field(..., description="Registered email address")
+    otp_code: str = Field(..., min_length=4, max_length=8, description="OTP code from email")
+    new_password: str = Field(..., min_length=8, max_length=72, description="New password (8-72 characters)")
+
+    @validator('email')
+    def normalize_email(cls, v):
+        return v.lower().strip()
+
+    @validator('otp_code')
+    def normalize_otp(cls, v):
+        return v.strip()
+
+
 class CreateBookmarkRequest(BaseModel):
     """Request model for saving a bookmark."""
 

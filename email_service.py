@@ -14,27 +14,40 @@ def is_email_configured() -> bool:
     return bool(settings.brevo_api_key and settings.brevo_sender_email)
 
 
-async def send_otp_email(to_email: str, otp_code: str, full_name: Optional[str] = None) -> None:
+async def send_otp_email(
+    to_email: str,
+    otp_code: str,
+    full_name: Optional[str] = None,
+    purpose: str = "verify",
+) -> None:
     """
-    Send a signup verification OTP email.
+    Send an OTP email (signup verification or password reset).
 
     Uses Brevo Transactional API (free plan is enough for OTP volume).
     If Brevo is not configured and email_otp_debug=True, logs the OTP instead.
     """
     display_name = (full_name or "there").strip() or "there"
-    subject = "Your verification code"
+    if purpose == "reset":
+        subject = "Your password reset code"
+        ignore_line = "If you did not request a password reset, you can ignore this email."
+        lead = "Your password reset code is:"
+    else:
+        subject = "Your verification code"
+        ignore_line = "If you did not sign up, you can ignore this email."
+        lead = "Your verification code is:"
+
     text_content = (
         f"Hi {display_name},\n\n"
-        f"Your verification code is: {otp_code}\n\n"
+        f"{lead} {otp_code}\n\n"
         f"This code expires in {settings.otp_expire_minutes} minutes.\n"
-        f"If you did not sign up, you can ignore this email.\n"
+        f"{ignore_line}\n"
     )
     html_content = f"""
     <p>Hi {display_name},</p>
-    <p>Your verification code is:</p>
+    <p>{lead}</p>
     <p style="font-size:24px;font-weight:700;letter-spacing:4px;">{otp_code}</p>
     <p>This code expires in {settings.otp_expire_minutes} minutes.</p>
-    <p>If you did not sign up, you can ignore this email.</p>
+    <p>{ignore_line}</p>
     """
 
     if not is_email_configured():
@@ -71,4 +84,4 @@ async def send_otp_email(to_email: str, otp_code: str, full_name: Optional[str] 
             logger.error(f"Brevo send failed ({response.status_code}): {response.text}")
             response.raise_for_status()
 
-    logger.info(f"Verification OTP emailed to {to_email}")
+    logger.info(f"OTP emailed to {to_email} (purpose={purpose})")

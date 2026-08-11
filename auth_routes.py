@@ -10,8 +10,10 @@ from models import (
     AuthResponse,
     CreateBookmarkRequest,
     CreateHistoryRequest,
+    ForgotPasswordRequest,
     LoginRequest,
     ResendOtpRequest,
+    ResetPasswordRequest,
     SignupPendingResponse,
     SignupRequest,
     UserProfile,
@@ -106,6 +108,54 @@ async def login(request: LoginRequest):
     except Exception as exc:
         logger.error(f"Login failed: {exc}")
         raise HTTPException(status_code=500, detail="Login failed") from exc
+
+
+@router.post("/forgot-password", response_model=SignupPendingResponse)
+async def forgot_password(request: ForgotPasswordRequest):
+    """
+    Request a password-reset OTP.
+    Always returns a generic success message (does not reveal whether the email exists).
+    """
+    try:
+        result = await auth_service.forgot_password(_db(), request.email)
+        return {
+            "status_code": 200,
+            "success": True,
+            "message": "If an account exists for this email, a password reset code has been sent.",
+            "email": result["email"],
+            "email_verified": True,
+            "requires_verification": True,
+            "otp_expires_in": result["otp_expires_in"],
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Forgot password failed: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to process password reset request") from exc
+
+
+@router.post("/reset-password", response_model=AuthResponse)
+async def reset_password(request: ResetPasswordRequest):
+    """Reset password with OTP and return a fresh JWT."""
+    try:
+        user = await auth_service.reset_password(
+            _db(),
+            request.email,
+            request.otp_code,
+            request.new_password,
+        )
+        bookmarks, history = await auth_service.get_user_auth_data(_db(), user["id"])
+        return auth_service.build_auth_response(
+            user,
+            bookmarks=bookmarks,
+            history=history,
+            message="Password reset successful",
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Reset password failed: {exc}")
+        raise HTTPException(status_code=500, detail="Password reset failed") from exc
 
 
 @router.get("/me", response_model=AuthResponse)

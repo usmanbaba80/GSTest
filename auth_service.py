@@ -90,8 +90,12 @@ def _is_email_verified(row: Dict[str, Any]) -> bool:
     return bool(row.get("email_verified"))
 
 
-async def _set_and_send_otp(get_db_connection, user: Dict[str, Any]) -> int:
-    """Generate OTP, store hash, send email. Returns expiry seconds."""
+async def _set_and_send_otp(
+    get_db_connection,
+    user: Dict[str, Any],
+    purpose: str = "verify",
+) -> int:
+    """Generate OTP, store hash + purpose, send email. Returns expiry seconds."""
     if not email_service.is_email_configured() and not settings.email_otp_debug:
         raise HTTPException(
             status_code=503,
@@ -120,18 +124,44 @@ async def _set_and_send_otp(get_db_connection, user: Dict[str, Any]) -> int:
             await cursor.execute(
                 """
                 UPDATE users
-                SET otp_code_hash = %s, otp_expires_at = %s, otp_last_sent_at = %s
+                SET otp_code_hash = %s,
+                    otp_purpose = %s,
+                    otp_expires_at = %s,
+                    otp_last_sent_at = %s
                 WHERE id = %s
                 """,
-                (otp_hash, expires_at, now, user["id"]),
+                (otp_hash, purpose, expires_at, now, user["id"]),
             )
 
     try:
-        await email_service.send_otp_email(user["email"], otp_code, user.get("full_name"))
+        await email_service.send_otp_email(
+            user["email"],
+            otp_code,
+            user.get("full_name"),
+            purpose=purpose,
+        )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Failed to send verification email: {exc}") from exc
 
     return settings.otp_expire_minutes * 60
+
+
+def _validate_otp(user: Dict[str, Any], otp_code: str, expected_purpose: str) -> None:
+    if not user.get("otp_code_hash") or not user.get("otp_expires_at"):
+        raise HTTPException(status_code=400, detail="No active verification code. Request a new one.")
+
+    purpose = user.get("otp_purpose") or "verify"
+    if purpose != expected_purpose:
+        raise HTTPException(status_code=400, detail="No active verification code. Request a new one.")
+
+    expires_at = user["otp_expires_at"]
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) > expires_at:
+        raise HTTPException(status_code=400, detail="Verification code expired. Request a new one.")
+
+    if _hash_otp(otp_code) != user["otp_code_hash"]:
+        raise HTTPException(status_code=400, detail="Invalid verification code")
 
 
 async def create_app_user(get_db_connection, email: str, password: str, full_name: Optional[str]) -> Dict[str, Any]:
@@ -166,7 +196,7 @@ async def create_app_user(get_db_connection, email: str, password: str, full_nam
 
 async def signup_with_otp(get_db_connection, email: str, password: str, full_name: Optional[str]) -> Dict[str, Any]:
     user = await create_app_user(get_db_connection, email, password, full_name)
-    otp_expires_in = await _set_and_send_otp(get_db_connection, user)
+    otp_expires_in = await _set_and_send_otp(get_db_connection, user, purpose="verify")
     return {
         "email": user["email"],
         "otp_expires_in": otp_expires_in,
@@ -214,17 +244,7 @@ async def verify_email_otp(get_db_connection, email: str, otp_code: str) -> Dict
     if _is_email_verified(user):
         return user
 
-    if not user.get("otp_code_hash") or not user.get("otp_expires_at"):
-        raise HTTPException(status_code=400, detail="No active verification code. Request a new one.")
-
-    expires_at = user["otp_expires_at"]
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if datetime.now(timezone.utc) > expires_at:
-        raise HTTPException(status_code=400, detail="Verification code expired. Request a new one.")
-
-    if _hash_otp(otp_code) != user["otp_code_hash"]:
-        raise HTTPException(status_code=400, detail="Invalid verification code")
+    _validate_otp(user, otp_code, expected_purpose="verify")
 
     async with get_db_connection() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
@@ -233,6 +253,7 @@ async def verify_email_otp(get_db_connection, email: str, otp_code: str) -> Dict
                 UPDATE users
                 SET email_verified = 1,
                     otp_code_hash = NULL,
+                    otp_purpose = NULL,
                     otp_expires_at = NULL,
                     last_login = NOW()
                 WHERE id = %s
@@ -257,11 +278,82 @@ async def resend_email_otp(get_db_connection, email: str) -> Dict[str, Any]:
     if _is_email_verified(user):
         raise HTTPException(status_code=400, detail="Email is already verified. Please login.")
 
-    otp_expires_in = await _set_and_send_otp(get_db_connection, user)
+    otp_expires_in = await _set_and_send_otp(get_db_connection, user, purpose="verify")
     return {
         "email": user["email"],
         "otp_expires_in": otp_expires_in,
     }
+
+
+async def forgot_password(get_db_connection, email: str) -> Dict[str, Any]:
+    """
+    Send a password-reset OTP if a verified account exists.
+    Always returns a generic success payload to avoid email enumeration.
+    """
+    generic = {
+        "email": email,
+        "otp_expires_in": settings.otp_expire_minutes * 60,
+    }
+
+    async with get_db_connection() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cursor:
+            await cursor.execute(
+                "SELECT * FROM users WHERE email = %s AND auth_provider = 'app'",
+                (email,),
+            )
+            user = await cursor.fetchone()
+
+    if not user or not _is_email_verified(user) or not user.get("password_hash"):
+        return generic
+
+    try:
+        otp_expires_in = await _set_and_send_otp(get_db_connection, user, purpose="reset")
+        return {
+            "email": user["email"],
+            "otp_expires_in": otp_expires_in,
+        }
+    except HTTPException as exc:
+        # Surface rate-limit / email-config errors; otherwise keep response generic
+        if exc.status_code in (429, 502, 503):
+            raise
+        return generic
+
+
+async def reset_password(
+    get_db_connection,
+    email: str,
+    otp_code: str,
+    new_password: str,
+) -> Dict[str, Any]:
+    async with get_db_connection() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cursor:
+            await cursor.execute(
+                "SELECT * FROM users WHERE email = %s AND auth_provider = 'app'",
+                (email,),
+            )
+            user = await cursor.fetchone()
+
+    if not user or not _is_email_verified(user):
+        raise HTTPException(status_code=400, detail="Invalid or expired reset request")
+
+    _validate_otp(user, otp_code, expected_purpose="reset")
+    password_hash = hash_password(new_password)
+
+    async with get_db_connection() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cursor:
+            await cursor.execute(
+                """
+                UPDATE users
+                SET password_hash = %s,
+                    otp_code_hash = NULL,
+                    otp_purpose = NULL,
+                    otp_expires_at = NULL
+                WHERE id = %s
+                """,
+                (password_hash, user["id"]),
+            )
+            await cursor.execute("SELECT * FROM users WHERE id = %s", (user["id"],))
+            return await cursor.fetchone()
 
 
 async def get_user_by_id(get_db_connection, user_id: int) -> Optional[Dict[str, Any]]:
