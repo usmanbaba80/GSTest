@@ -171,6 +171,18 @@ async def record_history(
     }
 
 
+@router.delete("/history/clear")
+async def clear_history(current_user: UserProfile = Depends(auth_service.get_current_user)):
+    """Clear all history entries for the authenticated user."""
+    deleted_count = await auth_service.clear_app_history(_db(), current_user.id)
+    return {
+        "status_code": 200,
+        "success": True,
+        "message": "History cleared",
+        "deleted_count": deleted_count,
+    }
+
+
 @router.delete("/history/{history_id}")
 async def remove_history_entry(
     history_id: int,
@@ -184,16 +196,4 @@ async def remove_history_entry(
         "status_code": 200,
         "success": True,
         "message": "History entry deleted",
-    }
-
-
-@router.delete("/history/clear")
-async def clear_history(current_user: UserProfile = Depends(auth_service.get_current_user)):
-    """Clear all history entries for the authenticated user."""
-    deleted_count = await auth_service.clear_app_history(_db(), current_user.id)
-    return {
-        "status_code": 200,
-        "success": True,
-        "message": "History cleared",
-        "deleted_count": deleted_count,
     }
