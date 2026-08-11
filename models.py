@@ -121,13 +121,6 @@ class LoginRequest(BaseModel):
         return v.lower().strip()
 
 
-class GoogleCallbackRequest(BaseModel):
-    """Request model for Google OAuth callback."""
-
-    code: str = Field(..., description="Authorization code from Google OAuth redirect")
-    state: Optional[str] = Field(None, description="CSRF state token (optional)")
-
-
 class BookmarkItem(BaseModel):
     """A saved bookmark."""
 
@@ -160,7 +153,7 @@ class UserProfile(BaseModel):
 
 
 class AuthResponse(BaseModel):
-    """Login/signup response with JWT and optional Google data."""
+    """Login/signup response with JWT."""
 
     status_code: int = 200
     success: bool = True
@@ -171,25 +164,10 @@ class AuthResponse(BaseModel):
     user: UserProfile
     bookmarks: Optional[List[BookmarkItem]] = None
     history: Optional[List[HistoryItem]] = None
-    google_sync: Optional[dict] = None
-    # Set after Google identity step; client must open this URL for Chrome data scopes
-    needs_portability_consent: bool = False
-    authorization_url: Optional[str] = None
-    step: Optional[str] = None  # "identity" | "complete"
-
-
-class GoogleAuthUrlResponse(BaseModel):
-    """Response containing Google OAuth authorization URL."""
-
-    status_code: int = 200
-    success: bool = True
-    message: str
-    authorization_url: str
-    state: str
 
 
 class CreateBookmarkRequest(BaseModel):
-    """Request model for saving an app bookmark."""
+    """Request model for saving a bookmark."""
 
     title: Optional[str] = Field(None, max_length=512, description="Page title")
     url: str = Field(..., min_length=1, max_length=2048, description="Bookmark URL")
@@ -204,7 +182,7 @@ class CreateBookmarkRequest(BaseModel):
 
 
 class CreateHistoryRequest(BaseModel):
-    """Request model for recording an app history entry."""
+    """Request model for recording a history entry."""
 
     title: Optional[str] = Field(None, max_length=512, description="Page title")
     url: str = Field(..., min_length=1, max_length=2048, description="Visited page URL")
@@ -215,4 +193,4 @@ class CreateHistoryRequest(BaseModel):
         v = v.strip()
         if not v.startswith(('http://', 'https://')):
             raise ValueError('URL must start with http:// or https://')
-        return v 
+        return v

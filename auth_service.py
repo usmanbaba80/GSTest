@@ -10,12 +10,10 @@ from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from config import settings
-from logger import logger
 from models import BookmarkItem, HistoryItem, UserProfile
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
-# bcrypt only uses the first 72 bytes of a password
 _BCRYPT_MAX_PASSWORD_BYTES = 72
 
 
@@ -71,13 +69,12 @@ def _row_to_user_profile(row: Dict[str, Any]) -> UserProfile:
         email=row["email"],
         full_name=row.get("full_name"),
         profile_picture=row.get("profile_picture"),
-        auth_provider=row["auth_provider"],
+        auth_provider=row.get("auth_provider") or "app",
         created_at=created_at.isoformat() if created_at else None,
     )
 
 
 async def create_app_user(get_db_connection, email: str, password: str, full_name: Optional[str]) -> Dict[str, Any]:
-    # Hash before opening a DB connection so bcrypt errors are not misreported as DB failures
     password_hash = hash_password(password)
 
     async with get_db_connection() as conn:
@@ -119,96 +116,6 @@ async def authenticate_app_user(get_db_connection, email: str, password: str) ->
     return user
 
 
-async def upsert_google_user(
-    get_db_connection,
-    google_sub: str,
-    email: str,
-    full_name: Optional[str],
-    profile_picture: Optional[str],
-) -> Dict[str, Any]:
-    async with get_db_connection() as conn:
-        async with conn.cursor(aiomysql.DictCursor) as cursor:
-            await cursor.execute("SELECT * FROM users WHERE google_sub = %s", (google_sub,))
-            existing = await cursor.fetchone()
-
-            if existing:
-                await cursor.execute(
-                    """
-                    UPDATE users
-                    SET email = %s, full_name = %s, profile_picture = %s,
-                        auth_provider = 'google', last_login = NOW()
-                    WHERE id = %s
-                    """,
-                    (email, full_name, profile_picture, existing["id"]),
-                )
-                user_id = existing["id"]
-            else:
-                await cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
-                email_user = await cursor.fetchone()
-                if email_user:
-                    await cursor.execute(
-                        """
-                        UPDATE users
-                        SET google_sub = %s, full_name = %s, profile_picture = %s,
-                            auth_provider = 'google', last_login = NOW()
-                        WHERE id = %s
-                        """,
-                        (google_sub, full_name or email_user.get("full_name"), profile_picture, email_user["id"]),
-                    )
-                    user_id = email_user["id"]
-                else:
-                    await cursor.execute(
-                        """
-                        INSERT INTO users (email, full_name, google_sub, profile_picture, auth_provider, last_login)
-                        VALUES (%s, %s, %s, %s, 'google', NOW())
-                        """,
-                        (email, full_name, google_sub, profile_picture),
-                    )
-                    user_id = cursor.lastrowid
-
-            await cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
-            return await cursor.fetchone()
-
-
-async def store_oauth_tokens(
-    get_db_connection,
-    user_id: int,
-    access_token: str,
-    refresh_token: Optional[str],
-    expires_in: Optional[int],
-    scopes: str,
-) -> None:
-    token_expiry = None
-    if expires_in:
-        token_expiry = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
-
-    async with get_db_connection() as conn:
-        async with conn.cursor(aiomysql.DictCursor) as cursor:
-            await cursor.execute(
-                """
-                INSERT INTO user_oauth_tokens (user_id, access_token, refresh_token, token_expiry, scopes)
-                VALUES (%s, %s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE
-                    access_token = VALUES(access_token),
-                    refresh_token = VALUES(refresh_token),
-                    token_expiry = VALUES(token_expiry),
-                    scopes = VALUES(scopes),
-                    updated_at = CURRENT_TIMESTAMP
-                """,
-                (user_id, access_token, refresh_token, token_expiry, scopes),
-            )
-
-
-async def get_oauth_tokens(get_db_connection, user_id: int) -> Optional[Dict[str, Any]]:
-    async with get_db_connection() as conn:
-        async with conn.cursor(aiomysql.DictCursor) as cursor:
-            await cursor.execute(
-                "SELECT access_token, refresh_token, token_expiry, scopes FROM user_oauth_tokens WHERE user_id = %s",
-                (user_id,),
-            )
-            return await cursor.fetchone()
-
-
 async def get_user_by_id(get_db_connection, user_id: int) -> Optional[Dict[str, Any]]:
     async with get_db_connection() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
@@ -216,33 +123,19 @@ async def get_user_by_id(get_db_connection, user_id: int) -> Optional[Dict[str, 
             return await cursor.fetchone()
 
 
-async def get_user_bookmarks(
-    get_db_connection, user_id: int, limit: int = 100, source: Optional[str] = None
-) -> List[BookmarkItem]:
+async def get_user_bookmarks(get_db_connection, user_id: int, limit: int = 100) -> List[BookmarkItem]:
     async with get_db_connection() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
-            if source:
-                await cursor.execute(
-                    """
-                    SELECT id, title, url, folder, source
-                    FROM user_bookmarks
-                    WHERE user_id = %s AND source = %s
-                    ORDER BY created_at DESC
-                    LIMIT %s
-                    """,
-                    (user_id, source, limit),
-                )
-            else:
-                await cursor.execute(
-                    """
-                    SELECT id, title, url, folder, source
-                    FROM user_bookmarks
-                    WHERE user_id = %s
-                    ORDER BY created_at DESC
-                    LIMIT %s
-                    """,
-                    (user_id, limit),
-                )
+            await cursor.execute(
+                """
+                SELECT id, title, url, folder, source
+                FROM user_bookmarks
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+                LIMIT %s
+                """,
+                (user_id, limit),
+            )
             rows = await cursor.fetchall()
 
     return [
@@ -251,39 +144,25 @@ async def get_user_bookmarks(
             title=row.get("title"),
             url=row["url"],
             folder=row.get("folder"),
-            source=row["source"],
+            source=row.get("source") or "app",
         )
         for row in rows
     ]
 
 
-async def get_user_history(
-    get_db_connection, user_id: int, limit: int = 100, source: Optional[str] = None
-) -> List[HistoryItem]:
+async def get_user_history(get_db_connection, user_id: int, limit: int = 100) -> List[HistoryItem]:
     async with get_db_connection() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
-            if source:
-                await cursor.execute(
-                    """
-                    SELECT id, title, url, visited_at, source
-                    FROM user_history
-                    WHERE user_id = %s AND source = %s
-                    ORDER BY visited_at DESC, created_at DESC
-                    LIMIT %s
-                    """,
-                    (user_id, source, limit),
-                )
-            else:
-                await cursor.execute(
-                    """
-                    SELECT id, title, url, visited_at, source
-                    FROM user_history
-                    WHERE user_id = %s
-                    ORDER BY visited_at DESC, created_at DESC
-                    LIMIT %s
-                    """,
-                    (user_id, limit),
-                )
+            await cursor.execute(
+                """
+                SELECT id, title, url, visited_at, source
+                FROM user_history
+                WHERE user_id = %s
+                ORDER BY visited_at DESC, created_at DESC
+                LIMIT %s
+                """,
+                (user_id, limit),
+            )
             rows = await cursor.fetchall()
 
     return [
@@ -292,7 +171,7 @@ async def get_user_history(
             title=row.get("title"),
             url=row["url"],
             visited_at=row["visited_at"].isoformat() if row.get("visited_at") else None,
-            source=row["source"],
+            source=row.get("source") or "app",
         )
         for row in rows
     ]
@@ -310,7 +189,7 @@ async def create_app_bookmark(
             await cursor.execute(
                 """
                 SELECT id FROM user_bookmarks
-                WHERE user_id = %s AND url = %s AND source = 'app'
+                WHERE user_id = %s AND url = %s
                 """,
                 (user_id, url),
             )
@@ -346,7 +225,7 @@ async def create_app_bookmark(
         title=row.get("title"),
         url=row["url"],
         folder=row.get("folder"),
-        source=row["source"],
+        source=row.get("source") or "app",
     )
 
 
@@ -354,10 +233,7 @@ async def delete_app_bookmark(get_db_connection, user_id: int, bookmark_id: int)
     async with get_db_connection() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
             await cursor.execute(
-                """
-                DELETE FROM user_bookmarks
-                WHERE id = %s AND user_id = %s AND source = 'app'
-                """,
+                "DELETE FROM user_bookmarks WHERE id = %s AND user_id = %s",
                 (bookmark_id, user_id),
             )
             return cursor.rowcount > 0
@@ -393,7 +269,7 @@ async def create_app_history_entry(
         title=row.get("title"),
         url=row["url"],
         visited_at=row["visited_at"].isoformat() if row.get("visited_at") else None,
-        source=row["source"],
+        source=row.get("source") or "app",
     )
 
 
@@ -401,10 +277,7 @@ async def delete_app_history_entry(get_db_connection, user_id: int, history_id: 
     async with get_db_connection() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
             await cursor.execute(
-                """
-                DELETE FROM user_history
-                WHERE id = %s AND user_id = %s AND source = 'app'
-                """,
+                "DELETE FROM user_history WHERE id = %s AND user_id = %s",
                 (history_id, user_id),
             )
             return cursor.rowcount > 0
@@ -414,7 +287,7 @@ async def clear_app_history(get_db_connection, user_id: int) -> int:
     async with get_db_connection() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
             await cursor.execute(
-                "DELETE FROM user_history WHERE user_id = %s AND source = 'app'",
+                "DELETE FROM user_history WHERE user_id = %s",
                 (user_id,),
             )
             return cursor.rowcount
@@ -426,100 +299,17 @@ async def get_user_auth_data(get_db_connection, user_id: int) -> tuple[List[Book
     return bookmarks, history
 
 
-async def save_google_bookmarks(get_db_connection, user_id: int, bookmarks: List[Dict[str, Any]]) -> int:
-    saved = 0
-    async with get_db_connection() as conn:
-        async with conn.cursor(aiomysql.DictCursor) as cursor:
-            await cursor.execute("DELETE FROM user_bookmarks WHERE user_id = %s AND source = 'google'", (user_id,))
-            for item in bookmarks:
-                await cursor.execute(
-                    """
-                    INSERT INTO user_bookmarks (user_id, title, url, folder, source, google_synced_at)
-                    VALUES (%s, %s, %s, %s, 'google', NOW())
-                    """,
-                    (user_id, item.get("title"), item["url"], item.get("folder")),
-                )
-                saved += 1
-    return saved
-
-
-async def save_google_history(get_db_connection, user_id: int, history_items: List[Dict[str, Any]]) -> int:
-    saved = 0
-    async with get_db_connection() as conn:
-        async with conn.cursor(aiomysql.DictCursor) as cursor:
-            await cursor.execute("DELETE FROM user_history WHERE user_id = %s AND source = 'google'", (user_id,))
-            for item in history_items:
-                visited_at = item.get("visited_at")
-                await cursor.execute(
-                    """
-                    INSERT INTO user_history (user_id, title, url, visited_at, source, google_synced_at)
-                    VALUES (%s, %s, %s, %s, 'google', NOW())
-                    """,
-                    (user_id, item.get("title"), item["url"], visited_at),
-                )
-                saved += 1
-    return saved
-
-
-async def record_sync_job(
-    get_db_connection,
-    user_id: int,
-    job_id: str,
-    resource_type: str,
-    status: str = "IN_PROGRESS",
-) -> None:
-    async with get_db_connection() as conn:
-        async with conn.cursor(aiomysql.DictCursor) as cursor:
-            await cursor.execute(
-                """
-                INSERT INTO google_sync_jobs (user_id, job_id, resource_type, status)
-                VALUES (%s, %s, %s, %s)
-                """,
-                (user_id, job_id, resource_type, status),
-            )
-
-
-async def update_sync_job_status(get_db_connection, job_id: str, status: str) -> None:
-    completed_at = "NOW()" if status == "COMPLETE" else "NULL"
-    async with get_db_connection() as conn:
-        async with conn.cursor(aiomysql.DictCursor) as cursor:
-            await cursor.execute(
-                f"""
-                UPDATE google_sync_jobs
-                SET status = %s, completed_at = {completed_at}
-                WHERE job_id = %s
-                """,
-                (status, job_id),
-            )
-
-
-async def get_sync_jobs(get_db_connection, user_id: int) -> List[Dict[str, Any]]:
-    async with get_db_connection() as conn:
-        async with conn.cursor(aiomysql.DictCursor) as cursor:
-            await cursor.execute(
-                """
-                SELECT job_id, resource_type, status, created_at, completed_at
-                FROM google_sync_jobs
-                WHERE user_id = %s
-                ORDER BY created_at DESC
-                LIMIT 10
-                """,
-                (user_id,),
-            )
-            return await cursor.fetchall()
-
-
 def build_auth_response(
     user_row: Dict[str, Any],
     bookmarks: Optional[List[BookmarkItem]] = None,
     history: Optional[List[HistoryItem]] = None,
-    google_sync: Optional[dict] = None,
     message: str = "Authentication successful",
-    needs_portability_consent: bool = False,
-    authorization_url: Optional[str] = None,
-    step: Optional[str] = None,
 ) -> dict:
-    token = create_access_token(user_row["id"], user_row["email"], user_row["auth_provider"])
+    token = create_access_token(
+        user_row["id"],
+        user_row["email"],
+        user_row.get("auth_provider") or "app",
+    )
     return {
         "status_code": 200,
         "success": True,
@@ -530,10 +320,6 @@ def build_auth_response(
         "user": _row_to_user_profile(user_row),
         "bookmarks": bookmarks,
         "history": history,
-        "google_sync": google_sync,
-        "needs_portability_consent": needs_portability_consent,
-        "authorization_url": authorization_url,
-        "step": step,
     }
 
 

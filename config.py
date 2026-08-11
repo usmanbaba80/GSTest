@@ -92,22 +92,10 @@ class Settings(BaseSettings):
     api_auth_enabled: bool = False  # When True, require valid Bearer token on all endpoints
     api_bearer_token: Optional[str] = None  # Set in .env: API_BEARER_TOKEN=your-secret-token
 
-    # User authentication (JWT + Google OAuth)
+    # User authentication (JWT)
     jwt_secret_key: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 10080  # 7 days
-    google_client_id: Optional[str] = None
-    google_client_secret: Optional[str] = None
-    google_redirect_uri: Optional[str] = None
-    # Google forbids mixing Data Portability scopes with other scopes in one request.
-    # Step 1: identity. Step 2: Chrome bookmarks/history export only.
-    google_oauth_scopes_identity: str = "openid email profile"
-    google_oauth_scopes_portability: str = (
-        "https://www.googleapis.com/auth/dataportability.chrome.bookmarks "
-        "https://www.googleapis.com/auth/dataportability.chrome.history"
-    )
-    # Kept for backward compatibility in docs/env; not used for mixed requests.
-    google_oauth_scopes: Optional[str] = None
 
     # GeoIP settings (GeoLite2 local DB)
     geolite2_db_path: Optional[str] = "GeoLite2-Country.mmdb"  # e.g., /usr/local/share/GeoIP/GeoLite2-Country.mmdb
