@@ -1380,7 +1380,7 @@ except Exception as e:
 @app.get("/search", response_model=Dict[str, Any])
 async def search(
     query: str = Query(..., min_length=1, max_length=500, description="Search query"),
-    searchType: str = Query(..., regex="^(general|nws|isch|shop)$", description="Type of search results"),
+    searchType: str = Query(..., regex="^(general|nws|isch|shop|videos)$", description="Type of search results"),
     start: int = Query(0, ge=0, le=1000, description="Start index"),
     limit: int = Query(5, ge=1, le=100, description="Limit of results"),
     page: int = Query(0, ge=0, description="Page number (only used for general search type)"),
@@ -1398,7 +1398,7 @@ async def search(
     
     Args:
         query: Search query string
-        searchType: Type of search (general, nws, isch, shop)
+        searchType: Type of search (general, nws, isch, shop, videos)
         start: Start index for pagination
         limit: Number of results to return
         
@@ -1814,6 +1814,13 @@ async def _process_search_request(query: str, searchType: str, start: int, limit
                 "country": location,
                 "advance_search": "false",
             }
+        elif searchType == "videos":
+            url = settings.scrapingdog_url_videos
+            params = {
+                "api_key": settings.scrapingdog_api_key,
+                "search_query": query,
+                "country": location,
+            }
         else:
             url = settings.scrapingdog_url
             params = {
@@ -1912,6 +1919,8 @@ async def _process_search_request(query: str, searchType: str, start: int, limit
                     if data:
                         sample_size = min(7, len(data))
                         popular_results = random.sample(data, sample_size)
+                elif searchType == "videos":
+                    data = response_data.get('video_results', [])
                 
                 break  # Success - exit retry loop
                 

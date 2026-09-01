@@ -4,7 +4,7 @@ A FastAPI backend service for web scraping, screenshot generation, and search fu
 
 ## Features
 
-- **Search API**: Cached search results with support for different search types (general, news, images, shopping)
+- **Search API**: Cached search results with support for different search types (general, news, images, shopping, videos)
 - **Screenshot Service**: Web page screenshot generation with automatic slicing and cloud storage using optimized browser pool management
 - **Link Extraction**: Extract all links from web pages
 
@@ -78,7 +78,7 @@ GET /search
 ```
 **Parameters:**
 - `query` (string): Search query (1-500 characters)
-- `searchType` (string): Type of search - general, nws, isch, shop
+- `searchType` (string): Type of search - general, nws, isch, shop, videos
 - `start` (int): Start index for pagination (0-1000)
 - `limit` (int): Number of results (1-100)
 

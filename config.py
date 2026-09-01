@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     scrapingdog_url_images: str = "https://api.scrapingdog.com/google_images/"
     scrapingdog_url_shopping: str = "https://api.scrapingdog.com/google_shopping/"
     scrapingdog_url_news: str = "https://api.scrapingdog.com/google_news/"
+    scrapingdog_url_videos: str = "https://api.scrapingdog.com/youtube/search"
     
     # Application settings
     base_path: str = "https://usc1.contabostorage.com/b3bbd30e3698470b9cc05e271ae9b511:fbsdatasync/"

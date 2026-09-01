@@ -1,0 +1,270 @@
+{
+  "info": {
+    "name": "GS Backend - Auth OTP, Bookmarks & History",
+    "description": "Signup → verify OTP → login, forgot/reset password, then bookmarks/history.\n\nSet collection vars: base_url, email, password, otp_code, new_password.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8002" },
+    { "key": "access_token", "value": "" },
+    { "key": "email", "value": "user@example.com" },
+    { "key": "password", "value": "securepass123" },
+    { "key": "new_password", "value": "newsecurepass123" },
+    { "key": "otp_code", "value": "123456" },
+    { "key": "bookmark_id", "value": "1" },
+    { "key": "history_id", "value": "1" }
+  ],
+  "item": [
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "Signup",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"full_name\": \"John Doe\"\n}"
+            },
+            "url": "{{base_url}}/auth/signup",
+            "description": "Creates unverified user and emails OTP. No JWT yet."
+          }
+        },
+        {
+          "name": "Verify Email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json();",
+                  "  if (data.access_token) pm.collectionVariables.set('access_token', data.access_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"otp_code\": \"{{otp_code}}\"\n}"
+            },
+            "url": "{{base_url}}/auth/verify-email",
+            "description": "Paste OTP from email into collection variable otp_code, then run."
+          }
+        },
+        {
+          "name": "Resend OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\"\n}"
+            },
+            "url": "{{base_url}}/auth/resend-otp"
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json();",
+                  "  if (data.access_token) pm.collectionVariables.set('access_token', data.access_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": "{{base_url}}/auth/login"
+          }
+        },
+        {
+          "name": "Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\"\n}"
+            },
+            "url": "{{base_url}}/auth/forgot-password"
+          }
+        },
+        {
+          "name": "Reset Password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json();",
+                  "  if (data.access_token) pm.collectionVariables.set('access_token', data.access_token);",
+                  "  if (pm.collectionVariables.get('new_password')) {",
+                  "    pm.collectionVariables.set('password', pm.collectionVariables.get('new_password'));",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"otp_code\": \"{{otp_code}}\",\n  \"new_password\": \"{{new_password}}\"\n}"
+            },
+            "url": "{{base_url}}/auth/reset-password"
+          }
+        },
+        {
+          "name": "Get Me",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}" }]
+            },
+            "method": "GET",
+            "url": "{{base_url}}/auth/me"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Bookmarks",
+      "item": [
+        {
+          "name": "Create Bookmark",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const data = pm.response.json();",
+                  "if (data.data && data.data.id) pm.collectionVariables.set('bookmark_id', String(data.data.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}" }]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"FastAPI Docs\",\n  \"url\": \"https://fastapi.tiangolo.com\",\n  \"folder\": \"Dev\"\n}"
+            },
+            "url": "{{base_url}}/auth/bookmarks"
+          }
+        },
+        {
+          "name": "List Bookmarks",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}" }]
+            },
+            "method": "GET",
+            "url": "{{base_url}}/auth/bookmarks?limit=100"
+          }
+        },
+        {
+          "name": "Delete Bookmark",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}" }]
+            },
+            "method": "DELETE",
+            "url": "{{base_url}}/auth/bookmarks/{{bookmark_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. History",
+      "item": [
+        {
+          "name": "Record History",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const data = pm.response.json();",
+                  "if (data.data && data.data.id) pm.collectionVariables.set('history_id', String(data.data.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}" }]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Google Search\",\n  \"url\": \"https://www.google.com\"\n}"
+            },
+            "url": "{{base_url}}/auth/history"
+          }
+        },
+        {
+          "name": "List History",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}" }]
+            },
+            "method": "GET",
+            "url": "{{base_url}}/auth/history?limit=100"
+          }
+        },
+        {
+          "name": "Delete History Entry",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}" }]
+            },
+            "method": "DELETE",
+            "url": "{{base_url}}/auth/history/{{history_id}}"
+          }
+        },
+        {
+          "name": "Clear All History",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}" }]
+            },
+            "method": "DELETE",
+            "url": "{{base_url}}/auth/history/clear"
+          }
+        }
+      ]
+    }
+  ]
+}
