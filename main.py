@@ -1380,7 +1380,7 @@ except Exception as e:
 @app.get("/search", response_model=Dict[str, Any])
 async def search(
     query: str = Query(..., min_length=1, max_length=500, description="Search query"),
-    searchType: str = Query(..., regex="^(general|nws|isch|shop|videos)$", description="Type of search results"),
+    searchType: str = Query(..., regex="^(general|nws|isch|shop|videos|ai)$", description="Type of search results"),
     start: int = Query(0, ge=0, le=1000, description="Start index"),
     limit: int = Query(5, ge=1, le=100, description="Limit of results"),
     page: int = Query(0, ge=0, description="Page number (only used for general search type)"),
@@ -1398,7 +1398,7 @@ async def search(
     
     Args:
         query: Search query string
-        searchType: Type of search (general, nws, isch, shop, videos)
+        searchType: Type of search (general, nws, isch, shop, videos, ai)
         start: Start index for pagination
         limit: Number of results to return
         
@@ -1747,6 +1747,8 @@ async def _process_search_request(query: str, searchType: str, start: int, limit
             if searchType == 'shop' and len(results_list) > 0:
                 sample_size = min(7, len(results_list))
                 popular_results = random.sample(results_list, sample_size)
+            elif searchType == "ai" and results_list and isinstance(results_list[0], dict):
+                popular_results = results_list[0].get("references", [])
             
             # Efficient pagination
             total_results = len(results_list)
@@ -1820,6 +1822,15 @@ async def _process_search_request(query: str, searchType: str, start: int, limit
                 "api_key": settings.scrapingdog_api_key,
                 "search_query": query,
                 "country": location,
+            }
+        elif searchType == "ai":
+            url = settings.scrapingdog_url_ai
+            params = {
+                "api_key": settings.scrapingdog_api_key,
+                "query": query,
+                "country": location,
+                "language": "en",
+                "safe": "off",
             }
         else:
             url = settings.scrapingdog_url
@@ -1921,6 +1932,10 @@ async def _process_search_request(query: str, searchType: str, start: int, limit
                         popular_results = random.sample(data, sample_size)
                 elif searchType == "videos":
                     data = response_data.get('video_results', [])
+                elif searchType == "ai":
+                    # AI Mode returns a structured object (text_blocks, references, etc.)
+                    data = [response_data] if response_data else []
+                    popular_results = response_data.get("references", []) if isinstance(response_data, dict) else []
                 
                 break  # Success - exit retry loop
                 
