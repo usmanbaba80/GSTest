@@ -1,89 +1,122 @@
-"""Authentication API routes: app signup/login, email OTP, bookmarks, and history."""
+"""Authentication API routes: passwordless email OTP sign-in, bookmarks, and history."""
 
 from datetime import datetime
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.security import HTTPAuthorizationCredentials
 
-import auth_service
-from logger import logger
-from models import (
+from app.auth import service as auth_service
+from app.logger import logger
+from app.models import (
     AuthResponse,
     CreateBookmarkRequest,
     CreateHistoryRequest,
-    ForgotPasswordRequest,
-    LoginRequest,
-    ResendOtpRequest,
-    ResetPasswordRequest,
-    SignupPendingResponse,
-    SignupRequest,
+    EmailOnlyRequest,
+    OtpPendingResponse,
     UserProfile,
-    VerifyEmailRequest,
+    VerifyOtpRequest,
 )
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 def _db():
-    from main import get_db_connection
+    from app.main import get_db_connection
     return get_db_connection
 
 
-@router.post("/signup", response_model=SignupPendingResponse)
-async def signup(request: SignupRequest):
+@router.post("/signin", response_model=OtpPendingResponse)
+async def signin(
+    request: EmailOnlyRequest,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(auth_service.bearer_scheme),
+):
     """
-    Register a new user and send email OTP.
-    Account stays unverified until POST /auth/verify-email succeeds.
+    Passwordless sign-in: send OTP to email.
+    Creates the user automatically if the email is new.
+
+    If Authorization Bearer token is present and still valid for the same email,
+    OTP is not sent — client should call GET /auth/me instead.
     """
     try:
-        result = await auth_service.signup_with_otp(
-            _db(), request.email, request.password, request.full_name
-        )
+        session_user = await auth_service.get_valid_session_user(credentials)
+        auth_service.raise_if_already_signed_in(session_user, request.email)
+
+        result = await auth_service.request_signin_otp(_db(), request.email)
         return {
             "status_code": 200,
             "success": True,
-            "message": "Signup successful. Enter the OTP sent to your email to verify your account.",
+            "message": "Sign-in code sent to your email.",
             "email": result["email"],
-            "email_verified": False,
+            "email_verified": result.get("email_verified", False),
             "requires_verification": True,
             "otp_expires_in": result["otp_expires_in"],
         }
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error(f"Signup failed: {exc}")
-        raise HTTPException(status_code=500, detail="Signup failed") from exc
+        logger.error(f"Sign-in failed: {exc}")
+        raise HTTPException(status_code=500, detail="Sign-in failed") from exc
 
 
-@router.post("/verify-email", response_model=AuthResponse)
-async def verify_email(request: VerifyEmailRequest):
-    """Verify signup email with OTP and return JWT."""
+# Backwards-compatible aliases for older clients
+@router.post("/signup", response_model=OtpPendingResponse, include_in_schema=False)
+async def signin_alias_signup(
+    request: EmailOnlyRequest,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(auth_service.bearer_scheme),
+):
+    return await signin(request, credentials)
+
+
+@router.post("/login", response_model=OtpPendingResponse, include_in_schema=False)
+async def signin_alias_login(
+    request: EmailOnlyRequest,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(auth_service.bearer_scheme),
+):
+    return await signin(request, credentials)
+
+
+@router.post("/verify-otp", response_model=AuthResponse)
+async def verify_otp(request: VerifyOtpRequest):
+    """Verify email OTP and return a long-lived JWT (valid until logout)."""
     try:
-        user = await auth_service.verify_email_otp(_db(), request.email, request.otp_code)
+        user = await auth_service.verify_signin_otp(_db(), request.email, request.otp_code)
         bookmarks, history = await auth_service.get_user_auth_data(_db(), user["id"])
         return auth_service.build_auth_response(
             user,
             bookmarks=bookmarks,
             history=history,
-            message="Email verified successfully",
+            message="Signed in successfully",
         )
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error(f"Email verification failed: {exc}")
-        raise HTTPException(status_code=500, detail="Email verification failed") from exc
+        logger.error(f"OTP verification failed: {exc}")
+        raise HTTPException(status_code=500, detail="OTP verification failed") from exc
 
 
-@router.post("/resend-otp", response_model=SignupPendingResponse)
-async def resend_otp(request: ResendOtpRequest):
-    """Resend verification OTP for an unverified account."""
+@router.post("/verify-email", response_model=AuthResponse, include_in_schema=False)
+async def verify_email_alias(request: VerifyOtpRequest):
+    return await verify_otp(request)
+
+
+@router.post("/resend-otp", response_model=OtpPendingResponse)
+async def resend_otp(
+    request: EmailOnlyRequest,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(auth_service.bearer_scheme),
+):
+    """Resend sign-in OTP for an email. Blocked if already signed in with a valid token."""
     try:
-        result = await auth_service.resend_email_otp(_db(), request.email)
+        session_user = await auth_service.get_valid_session_user(credentials)
+        auth_service.raise_if_already_signed_in(session_user, request.email)
+
+        result = await auth_service.resend_signin_otp(_db(), request.email)
         return {
             "status_code": 200,
             "success": True,
-            "message": "A new verification code has been sent to your email.",
+            "message": "A new sign-in code has been sent to your email.",
             "email": result["email"],
-            "email_verified": False,
+            "email_verified": result.get("email_verified", False),
             "requires_verification": True,
             "otp_expires_in": result["otp_expires_in"],
         }
@@ -94,73 +127,29 @@ async def resend_otp(request: ResendOtpRequest):
         raise HTTPException(status_code=500, detail="Failed to resend OTP") from exc
 
 
-@router.post("/login", response_model=AuthResponse)
-async def login(request: LoginRequest):
-    """Login with email and password. Requires prior signup and email verification."""
-    try:
-        user = await auth_service.authenticate_app_user(_db(), request.email, request.password)
-        bookmarks, history = await auth_service.get_user_auth_data(_db(), user["id"])
-        return auth_service.build_auth_response(
-            user, bookmarks=bookmarks, history=history, message="Login successful"
-        )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error(f"Login failed: {exc}")
-        raise HTTPException(status_code=500, detail="Login failed") from exc
-
-
-@router.post("/forgot-password", response_model=SignupPendingResponse)
-async def forgot_password(request: ForgotPasswordRequest):
+@router.post("/logout")
+async def logout(current_user: UserProfile = Depends(auth_service.get_current_user)):
     """
-    Request a password-reset OTP.
-    Always returns a generic success message (does not reveal whether the email exists).
+    Explicit sign-out. Invalidates the current JWT (and all prior tokens for this user).
+    Client should discard the access_token after this call.
     """
     try:
-        result = await auth_service.forgot_password(_db(), request.email)
+        await auth_service.logout_user(_db(), current_user.id)
         return {
             "status_code": 200,
             "success": True,
-            "message": "If an account exists for this email, a password reset code has been sent.",
-            "email": result["email"],
-            "email_verified": True,
-            "requires_verification": True,
-            "otp_expires_in": result["otp_expires_in"],
+            "message": "Signed out successfully",
         }
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error(f"Forgot password failed: {exc}")
-        raise HTTPException(status_code=500, detail="Failed to process password reset request") from exc
-
-
-@router.post("/reset-password", response_model=AuthResponse)
-async def reset_password(request: ResetPasswordRequest):
-    """Reset password with OTP and return a fresh JWT."""
-    try:
-        user = await auth_service.reset_password(
-            _db(),
-            request.email,
-            request.otp_code,
-            request.new_password,
-        )
-        bookmarks, history = await auth_service.get_user_auth_data(_db(), user["id"])
-        return auth_service.build_auth_response(
-            user,
-            bookmarks=bookmarks,
-            history=history,
-            message="Password reset successful",
-        )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error(f"Reset password failed: {exc}")
-        raise HTTPException(status_code=500, detail="Password reset failed") from exc
+        logger.error(f"Logout failed: {exc}")
+        raise HTTPException(status_code=500, detail="Logout failed") from exc
 
 
 @router.get("/me", response_model=AuthResponse)
 async def get_me(current_user: UserProfile = Depends(auth_service.get_current_user)):
-    """Get the currently authenticated user's profile."""
+    """Get the currently authenticated user's profile + bookmarks + history."""
     user = await auth_service.get_user_by_id(_db(), current_user.id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -181,7 +170,7 @@ async def list_bookmarks(
     current_user: UserProfile = Depends(auth_service.get_current_user),
     limit: int = Query(100, ge=1, le=500),
 ):
-    """List bookmarks for the authenticated user."""
+    """List bookmarks for the authenticated user (tied to their email)."""
     bookmarks = await auth_service.get_user_bookmarks(_db(), current_user.id, limit=limit)
     return {
         "status_code": 200,
@@ -233,7 +222,7 @@ async def list_history(
     current_user: UserProfile = Depends(auth_service.get_current_user),
     limit: int = Query(100, ge=1, le=500),
 ):
-    """List browsing history for the authenticated user."""
+    """List browsing history for the authenticated user (tied to their email)."""
     history = await auth_service.get_user_history(_db(), current_user.id, limit=limit)
     return {
         "status_code": 200,
@@ -280,6 +269,31 @@ async def clear_history(current_user: UserProfile = Depends(auth_service.get_cur
         "success": True,
         "message": "History cleared",
         "deleted_count": deleted_count,
+    }
+
+
+@router.delete("/history/range")
+async def delete_history_range(
+    from_epoch: int = Query(
+        ...,
+        description="Unix epoch (seconds or milliseconds). Deletes history from this time until now.",
+    ),
+    current_user: UserProfile = Depends(auth_service.get_current_user),
+):
+    """
+    Delete history from `from_epoch` to now for the authenticated user.
+    Example: DELETE /auth/history/range?from_epoch=1710000000
+    """
+    result = await auth_service.delete_app_history_from_epoch(
+        _db(),
+        current_user.id,
+        from_epoch,
+    )
+    return {
+        "status_code": 200,
+        "success": True,
+        "message": "History deleted for the selected time range",
+        **result,
     }
 
 

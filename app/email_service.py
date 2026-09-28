@@ -4,8 +4,8 @@ from typing import Optional
 
 import httpx
 
-from config import settings
-from logger import logger
+from app.config import settings
+from app.logger import logger
 
 BREVO_SEND_URL = "https://api.brevo.com/v3/smtp/email"
 
@@ -31,6 +31,10 @@ async def send_otp_email(
         subject = "Your password reset code"
         ignore_line = "If you did not request a password reset, you can ignore this email."
         lead = "Your password reset code is:"
+    elif purpose == "signin":
+        subject = "Your sign-in code"
+        ignore_line = "If you did not try to sign in, you can ignore this email."
+        lead = "Your sign-in code is:"
     else:
         subject = "Your verification code"
         ignore_line = "If you did not sign up, you can ignore this email."

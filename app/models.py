@@ -96,12 +96,10 @@ class ErrorResponse(BaseModel):
 # Authentication models
 # =====================================================================
 
-class SignupRequest(BaseModel):
-    """Request model for app signup."""
+class EmailOnlyRequest(BaseModel):
+    """Request model for passwordless sign-in / resend OTP (email only)."""
 
     email: str = Field(..., min_length=5, max_length=255, description="User email address")
-    password: str = Field(..., min_length=8, max_length=72, description="Password (8-72 characters; bcrypt limit)")
-    full_name: Optional[str] = Field(None, max_length=255, description="Display name")
 
     @validator('email')
     def validate_email(cls, v):
@@ -110,15 +108,11 @@ class SignupRequest(BaseModel):
         return v.lower().strip()
 
 
-class LoginRequest(BaseModel):
-    """Request model for app login."""
-
-    email: str = Field(..., description="Registered email address")
-    password: str = Field(..., description="Account password")
-
-    @validator('email')
-    def normalize_email(cls, v):
-        return v.lower().strip()
+# Backwards-compatible aliases
+SignupRequest = EmailOnlyRequest
+LoginRequest = EmailOnlyRequest
+ResendOtpRequest = EmailOnlyRequest
+ForgotPasswordRequest = EmailOnlyRequest
 
 
 class BookmarkItem(BaseModel):
@@ -168,7 +162,7 @@ class AuthResponse(BaseModel):
 
 
 class SignupPendingResponse(BaseModel):
-    """Signup succeeded; email verification required before login."""
+    """OTP sent; client must verify before receiving JWT."""
 
     status_code: int = 200
     success: bool = True
@@ -179,10 +173,13 @@ class SignupPendingResponse(BaseModel):
     otp_expires_in: int
 
 
-class VerifyEmailRequest(BaseModel):
-    """Verify signup email with OTP code."""
+OtpPendingResponse = SignupPendingResponse
 
-    email: str = Field(..., description="Signup email address")
+
+class VerifyOtpRequest(BaseModel):
+    """Verify sign-in email with OTP code."""
+
+    email: str = Field(..., description="Sign-in email address")
     otp_code: str = Field(..., min_length=4, max_length=8, description="OTP code from email")
 
     @validator('email')
@@ -194,40 +191,7 @@ class VerifyEmailRequest(BaseModel):
         return v.strip()
 
 
-class ResendOtpRequest(BaseModel):
-    """Resend signup verification OTP."""
-
-    email: str = Field(..., description="Signup email address")
-
-    @validator('email')
-    def normalize_email(cls, v):
-        return v.lower().strip()
-
-
-class ForgotPasswordRequest(BaseModel):
-    """Request a password-reset OTP."""
-
-    email: str = Field(..., description="Registered email address")
-
-    @validator('email')
-    def normalize_email(cls, v):
-        return v.lower().strip()
-
-
-class ResetPasswordRequest(BaseModel):
-    """Reset password using email OTP."""
-
-    email: str = Field(..., description="Registered email address")
-    otp_code: str = Field(..., min_length=4, max_length=8, description="OTP code from email")
-    new_password: str = Field(..., min_length=8, max_length=72, description="New password (8-72 characters)")
-
-    @validator('email')
-    def normalize_email(cls, v):
-        return v.lower().strip()
-
-    @validator('otp_code')
-    def normalize_otp(cls, v):
-        return v.strip()
+VerifyEmailRequest = VerifyOtpRequest
 
 
 class CreateBookmarkRequest(BaseModel):

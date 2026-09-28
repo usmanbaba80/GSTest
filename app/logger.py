@@ -1,7 +1,7 @@
 import logging
 import sys
 from typing import Optional
-from config import settings
+from app.config import settings
 
 def setup_logging(log_level: Optional[str] = None) -> logging.Logger:
     """

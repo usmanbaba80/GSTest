@@ -2,6 +2,45 @@
 
 A FastAPI backend service for web scraping, screenshot generation, and search functionality.
 
+## Project structure
+
+```text
+.
+├── main.py                 # Entrypoint (uvicorn main:app)
+├── requirements.txt
+├── .env
+├── postman/                # Postman collection
+├── docs/                   # AUTH_API.md, high-load notes
+└── app/
+    ├── main.py             # FastAPI app, search/screenshot/links routes
+    ├── config.py           # Settings from .env
+    ├── logger.py
+    ├── models.py           # Pydantic models
+    ├── email_service.py    # Brevo OTP emails
+    ├── auth/               # Passwordless OTP auth + bookmarks/history
+    │   ├── routes.py
+    │   ├── service.py
+    │   └── db.py
+    ├── trending/           # Google trending cache API
+    │   ├── routes.py
+    │   ├── service.py
+    │   └── db.py
+    ├── search/             # Search helpers (AI mode normalizer)
+    └── api/                # Reserved for future route splits
+```
+
+Run (unchanged):
+
+```bash
+uvicorn main:app --host 0.0.0.0 --port 8002 --reload
+```
+
+Also works:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8002 --reload
+```
+
 ## Features
 
 - **Search API**: Cached search results with support for different search types (general, news, images, shopping, videos, ai)

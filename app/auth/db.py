@@ -1,6 +1,6 @@
 """Database schema initialization for user authentication."""
 
-from logger import logger
+from app.logger import logger
 
 AUTH_TABLES_SQL = [
     """
@@ -16,6 +16,7 @@ AUTH_TABLES_SQL = [
         otp_purpose VARCHAR(32) NULL,
         otp_expires_at TIMESTAMP NULL,
         otp_last_sent_at TIMESTAMP NULL,
+        token_version INT NOT NULL DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         last_login TIMESTAMP NULL,
         UNIQUE KEY unique_email (email)
@@ -56,6 +57,7 @@ AUTH_ALTER_SQL = [
     "ALTER TABLE users ADD COLUMN otp_purpose VARCHAR(32) NULL",
     "ALTER TABLE users ADD COLUMN otp_expires_at TIMESTAMP NULL",
     "ALTER TABLE users ADD COLUMN otp_last_sent_at TIMESTAMP NULL",
+    "ALTER TABLE users ADD COLUMN token_version INT NOT NULL DEFAULT 0",
 ]
 
 

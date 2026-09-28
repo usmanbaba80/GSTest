@@ -1,6 +1,10 @@
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from typing import Optional
 import os
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_ENV_FILE = _PROJECT_ROOT / ".env"
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -13,6 +17,7 @@ class Settings(BaseSettings):
     db_database: str
     db_pool_size: int = 32  # Increased from 32 for high concurrency
     db_ssl_ca: Optional[str] = None
+    db_ssl_enabled: Optional[bool] = None  # None = auto (on for Azure / when CA set)
     db_server_public_key: Optional[str] = None  # Path to MySQL server public key (PEM)
     
     # Database pool optimization settings
@@ -45,6 +50,15 @@ class Settings(BaseSettings):
     scrapingdog_url_news: str = "https://api.scrapingdog.com/google_news/"
     scrapingdog_url_videos: str = "https://api.scrapingdog.com/youtube/search"
     scrapingdog_url_ai: str = "https://api.scrapingdog.com/google/ai_mode"
+    scrapingdog_url_trending_now: str = "https://api.scrapingdog.com/google_trends/trending_now"
+
+    # Google Trending Now cache (ScrapingDog)
+    trending_cache_hours: int = 24
+    trending_store_count: int = 10
+    trending_serve_count: int = 4
+    trending_default_geo: str = "US"
+    trending_hours: str = "24"  # ScrapingDog hours filter: 4, 24, 48, 168
+    trending_language: str = "en"
     
     # Application settings
     base_path: str = "https://usc1.contabostorage.com/b3bbd30e3698470b9cc05e271ae9b511:fbsdatasync/"
@@ -97,7 +111,7 @@ class Settings(BaseSettings):
     # User authentication (JWT)
     jwt_secret_key: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
-    jwt_expire_minutes: int = 10080  # 7 days
+    jwt_expire_minutes: int = 525600  # 365 days — stay signed in until logout
 
     # Email verification via Brevo (free tier ~300 emails/day)
     brevo_api_key: Optional[str] = None
@@ -112,7 +126,7 @@ class Settings(BaseSettings):
     geolite2_db_path: Optional[str] = "GeoLite2-Country.mmdb"  # e.g., /usr/local/share/GeoIP/GeoLite2-Country.mmdb
     
     class Config:
-        env_file = ".env"
+        env_file = str(_ENV_FILE)
         case_sensitive = False
         extra = "ignore"  # Allow leftover env vars (e.g. old GOOGLE_* keys) without crashing
 

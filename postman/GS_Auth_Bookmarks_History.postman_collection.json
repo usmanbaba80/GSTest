@@ -1,123 +1,65 @@
 {
   "info": {
-    "name": "GS Backend - Auth OTP, Bookmarks & History",
-    "description": "Signup → verify OTP → login, forgot/reset password, then bookmarks/history.\n\nSet collection vars: base_url, email, password, otp_code, new_password.",
+    "name": "GS Backend - Auth OTP, Search, Bookmarks & History",
+    "description": "Updated collection for passwordless email OTP auth, search types (general/nws/isch/shop/videos/ai), bookmarks, and history.\n\n## Flow\n1. POST /auth/signin (email only) → OTP emailed\n2. Set otp_code from email\n3. POST /auth/verify-otp → access_token saved automatically\n4. Call bookmarks/history/search with Bearer token where required\n5. POST /auth/logout to end session\n\n## Collection variables\n- base_url (default http://localhost:8002)\n- email\n- otp_code\n- access_token (auto-set after verify)\n- query (for search)\n- bookmark_id / history_id (auto-set on create)",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "base_url", "value": "http://localhost:8002" },
     { "key": "access_token", "value": "" },
     { "key": "email", "value": "user@example.com" },
-    { "key": "password", "value": "securepass123" },
-    { "key": "new_password", "value": "newsecurepass123" },
     { "key": "otp_code", "value": "123456" },
+    { "key": "query", "value": "best laptop" },
     { "key": "bookmark_id", "value": "1" },
-    { "key": "history_id", "value": "1" }
+    { "key": "history_id", "value": "1" },
+    { "key": "from_epoch", "value": "1710000000" },
+    { "key": "screenshot_url", "value": "https://example.com" }
   ],
   "item": [
     {
-      "name": "1. Auth",
+      "name": "0. Health",
       "item": [
         {
-          "name": "Signup",
+          "name": "Health Check",
           "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"full_name\": \"John Doe\"\n}"
-            },
-            "url": "{{base_url}}/auth/signup",
-            "description": "Creates unverified user and emails OTP. No JWT yet."
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/health"
           }
-        },
+        }
+      ]
+    },
+    {
+      "name": "1. Auth (Passwordless OTP)",
+      "item": [
         {
-          "name": "Verify Email",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "if (pm.response.code === 200) {",
-                  "  const data = pm.response.json();",
-                  "  if (data.access_token) pm.collectionVariables.set('access_token', data.access_token);",
-                  "}"
-                ]
-              }
-            }
-          ],
+          "name": "Sign In (send OTP)",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"{{email}}\",\n  \"otp_code\": \"{{otp_code}}\"\n}"
-            },
-            "url": "{{base_url}}/auth/verify-email",
-            "description": "Paste OTP from email into collection variable otp_code, then run."
-          }
-        },
-        {
-          "name": "Resend OTP",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"{{email}}\"\n}"
             },
-            "url": "{{base_url}}/auth/resend-otp"
+            "url": "{{base_url}}/auth/signin",
+            "description": "Send OTP to email. Creates user if new. Method must be POST."
           }
         },
         {
-          "name": "Login",
+          "name": "Verify OTP",
           "event": [
             {
               "listen": "test",
               "script": {
+                "type": "text/javascript",
                 "exec": [
                   "if (pm.response.code === 200) {",
                   "  const data = pm.response.json();",
-                  "  if (data.access_token) pm.collectionVariables.set('access_token', data.access_token);",
-                  "}"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
-            },
-            "url": "{{base_url}}/auth/login"
-          }
-        },
-        {
-          "name": "Forgot Password",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"{{email}}\"\n}"
-            },
-            "url": "{{base_url}}/auth/forgot-password"
-          }
-        },
-        {
-          "name": "Reset Password",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "if (pm.response.code === 200) {",
-                  "  const data = pm.response.json();",
-                  "  if (data.access_token) pm.collectionVariables.set('access_token', data.access_token);",
-                  "  if (pm.collectionVariables.get('new_password')) {",
-                  "    pm.collectionVariables.set('password', pm.collectionVariables.get('new_password'));",
+                  "  if (data.access_token) {",
+                  "    pm.collectionVariables.set('access_token', data.access_token);",
+                  "    console.log('access_token saved');",
                   "  }",
                   "}"
                 ]
@@ -126,12 +68,29 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"{{email}}\",\n  \"otp_code\": \"{{otp_code}}\",\n  \"new_password\": \"{{new_password}}\"\n}"
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"otp_code\": \"{{otp_code}}\"\n}"
             },
-            "url": "{{base_url}}/auth/reset-password"
+            "url": "{{base_url}}/auth/verify-otp",
+            "description": "Verify OTP and get long-lived JWT. Token is saved to collection variable access_token."
+          }
+        },
+        {
+          "name": "Resend OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\"\n}"
+            },
+            "url": "{{base_url}}/auth/resend-otp"
           }
         },
         {
@@ -139,10 +98,42 @@
           "request": {
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{access_token}}" }]
+              "bearer": [
+                { "key": "token", "value": "{{access_token}}", "type": "string" }
+              ]
             },
             "method": "GET",
+            "header": [],
             "url": "{{base_url}}/auth/me"
+          }
+        },
+        {
+          "name": "Logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  pm.collectionVariables.set('access_token', '');",
+                  "  console.log('access_token cleared');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{access_token}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "url": "{{base_url}}/auth/logout",
+            "description": "Invalidates JWT session. Clears local access_token variable."
           }
         }
       ]
@@ -156,9 +147,14 @@
             {
               "listen": "test",
               "script": {
+                "type": "text/javascript",
                 "exec": [
-                  "const data = pm.response.json();",
-                  "if (data.data && data.data.id) pm.collectionVariables.set('bookmark_id', String(data.data.id));"
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "  const data = pm.response.json();",
+                  "  if (data.data && data.data.id) {",
+                  "    pm.collectionVariables.set('bookmark_id', String(data.data.id));",
+                  "  }",
+                  "}"
                 ]
               }
             }
@@ -166,13 +162,17 @@
           "request": {
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{access_token}}" }]
+              "bearer": [
+                { "key": "token", "value": "{{access_token}}", "type": "string" }
+              ]
             },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"FastAPI Docs\",\n  \"url\": \"https://fastapi.tiangolo.com\",\n  \"folder\": \"Dev\"\n}"
+              "raw": "{\n  \"title\": \"Example\",\n  \"url\": \"https://example.com\",\n  \"folder\": \"Work\"\n}"
             },
             "url": "{{base_url}}/auth/bookmarks"
           }
@@ -182,10 +182,20 @@
           "request": {
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{access_token}}" }]
+              "bearer": [
+                { "key": "token", "value": "{{access_token}}", "type": "string" }
+              ]
             },
             "method": "GET",
-            "url": "{{base_url}}/auth/bookmarks?limit=100"
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/bookmarks?limit=100",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "bookmarks"],
+              "query": [
+                { "key": "limit", "value": "100" }
+              ]
+            }
           }
         },
         {
@@ -193,9 +203,12 @@
           "request": {
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{access_token}}" }]
+              "bearer": [
+                { "key": "token", "value": "{{access_token}}", "type": "string" }
+              ]
             },
             "method": "DELETE",
+            "header": [],
             "url": "{{base_url}}/auth/bookmarks/{{bookmark_id}}"
           }
         }
@@ -210,9 +223,14 @@
             {
               "listen": "test",
               "script": {
+                "type": "text/javascript",
                 "exec": [
-                  "const data = pm.response.json();",
-                  "if (data.data && data.data.id) pm.collectionVariables.set('history_id', String(data.data.id));"
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "  const data = pm.response.json();",
+                  "  if (data.data && data.data.id) {",
+                  "    pm.collectionVariables.set('history_id', String(data.data.id));",
+                  "  }",
+                  "}"
                 ]
               }
             }
@@ -220,13 +238,17 @@
           "request": {
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{access_token}}" }]
+              "bearer": [
+                { "key": "token", "value": "{{access_token}}", "type": "string" }
+              ]
             },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Google Search\",\n  \"url\": \"https://www.google.com\"\n}"
+              "raw": "{\n  \"title\": \"Example visit\",\n  \"url\": \"https://example.com\"\n}"
             },
             "url": "{{base_url}}/auth/history"
           }
@@ -236,10 +258,20 @@
           "request": {
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{access_token}}" }]
+              "bearer": [
+                { "key": "token", "value": "{{access_token}}", "type": "string" }
+              ]
             },
             "method": "GET",
-            "url": "{{base_url}}/auth/history?limit=100"
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/history?limit=100",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "history"],
+              "query": [
+                { "key": "limit", "value": "100" }
+              ]
+            }
           }
         },
         {
@@ -247,9 +279,12 @@
           "request": {
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{access_token}}" }]
+              "bearer": [
+                { "key": "token", "value": "{{access_token}}", "type": "string" }
+              ]
             },
             "method": "DELETE",
+            "header": [],
             "url": "{{base_url}}/auth/history/{{history_id}}"
           }
         },
@@ -258,10 +293,231 @@
           "request": {
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{access_token}}" }]
+              "bearer": [
+                { "key": "token", "value": "{{access_token}}", "type": "string" }
+              ]
             },
             "method": "DELETE",
+            "header": [],
             "url": "{{base_url}}/auth/history/clear"
+          }
+        },
+        {
+          "name": "Delete History From Epoch To Now",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{access_token}}", "type": "string" }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/history/range?from_epoch={{from_epoch}}",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "history", "range"],
+              "query": [
+                {
+                  "key": "from_epoch",
+                  "value": "{{from_epoch}}",
+                  "description": "Unix epoch seconds or milliseconds. Deletes history from this time until now."
+                }
+              ]
+            },
+            "description": "Deletes history entries for the signed-in user from from_epoch to now."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Search",
+      "item": [
+        {
+          "name": "Search - general",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/search?query={{query}}&searchType=general&start=0&limit=25",
+              "host": ["{{base_url}}"],
+              "path": ["search"],
+              "query": [
+                { "key": "query", "value": "{{query}}" },
+                { "key": "searchType", "value": "general" },
+                { "key": "start", "value": "0" },
+                { "key": "limit", "value": "25" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Search - news (nws)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/search?query={{query}}&searchType=nws&start=0&limit=25",
+              "host": ["{{base_url}}"],
+              "path": ["search"],
+              "query": [
+                { "key": "query", "value": "{{query}}" },
+                { "key": "searchType", "value": "nws" },
+                { "key": "start", "value": "0" },
+                { "key": "limit", "value": "25" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Search - images (isch)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/search?query={{query}}&searchType=isch&start=0&limit=25",
+              "host": ["{{base_url}}"],
+              "path": ["search"],
+              "query": [
+                { "key": "query", "value": "{{query}}" },
+                { "key": "searchType", "value": "isch" },
+                { "key": "start", "value": "0" },
+                { "key": "limit", "value": "25" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Search - shopping (shop)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/search?query={{query}}&searchType=shop&start=0&limit=25",
+              "host": ["{{base_url}}"],
+              "path": ["search"],
+              "query": [
+                { "key": "query", "value": "{{query}}" },
+                { "key": "searchType", "value": "shop" },
+                { "key": "start", "value": "0" },
+                { "key": "limit", "value": "25" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Search - videos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/search?query={{query}}&searchType=videos&start=0&limit=25",
+              "host": ["{{base_url}}"],
+              "path": ["search"],
+              "query": [
+                { "key": "query", "value": "{{query}}" },
+                { "key": "searchType", "value": "videos" },
+                { "key": "start", "value": "0" },
+                { "key": "limit", "value": "25" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Search - AI Mode",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/search?query={{query}}&searchType=ai&start=0&limit=25",
+              "host": ["{{base_url}}"],
+              "path": ["search"],
+              "query": [
+                { "key": "query", "value": "{{query}}" },
+                { "key": "searchType", "value": "ai" },
+                { "key": "start", "value": "0" },
+                { "key": "limit", "value": "25" }
+              ]
+            },
+            "description": "Google AI Mode. Response data[0] is normalized blocks schema."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Trending",
+      "item": [
+        {
+          "name": "Get Trending (4 random from cached top 10)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/trending?geo=US&limit=4",
+              "host": ["{{base_url}}"],
+              "path": ["trending"],
+              "query": [
+                { "key": "geo", "value": "US", "description": "Google Trends geo code" },
+                { "key": "limit", "value": "4", "description": "Random items to return from cached top 10" }
+              ]
+            },
+            "description": "Uses ScrapingDog trending_now. Caches top 10 for 24h per geo. Concurrent-safe refresh when stale."
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Screenshot",
+      "item": [
+        {
+          "name": "Create Screenshot",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://example.com\",\n  \"ux_type\": 1,\n  \"ss_width\": 1280,\n  \"ss_height\": 720,\n  \"full_page\": true,\n  \"browser_type\": \"chromium\"\n}"
+            },
+            "url": "{{base_url}}/screenshot/",
+            "description": "Takes a webpage screenshot. Uses screenshots table for cache (url → slices/links). Uploads images to S3."
+          }
+        },
+        {
+          "name": "Screenshot Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/screenshot-status"
+          }
+        },
+        {
+          "name": "Screenshot Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/screenshot-health"
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Links",
+      "item": [
+        {
+          "name": "Get Links for URL",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://example.com\"\n}"
+            },
+            "url": "{{base_url}}/links/",
+            "description": "Returns links previously saved for this URL in the screenshots table (from a prior screenshot)."
           }
         }
       ]
