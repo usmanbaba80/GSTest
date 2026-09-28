@@ -140,30 +140,41 @@ def _validate_otp(user: Dict[str, Any], otp_code: str, expected_purpose: str) ->
 
 
 async def get_or_create_user_by_email(get_db_connection, email: str) -> Dict[str, Any]:
-    """Find user by email or create a passwordless account."""
+    """Find user by email or create a passwordless account (race-safe)."""
+    email = (email or "").lower().strip()
+
     async with get_db_connection() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
-            await cursor.execute(
-                "SELECT * FROM users WHERE email = %s AND auth_provider = 'app'",
-                (email,),
-            )
+            # Match on email only — unique_email is global
+            await cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
             user = await cursor.fetchone()
             if user:
                 return user
 
-            await cursor.execute(
-                """
-                INSERT INTO users (
-                    email, password_hash, full_name, auth_provider,
-                    email_verified, token_version, last_login
+            try:
+                await cursor.execute(
+                    """
+                    INSERT INTO users (
+                        email, password_hash, full_name, auth_provider,
+                        email_verified, token_version, last_login
+                    )
+                    VALUES (%s, NULL, NULL, 'app', 0, 0, NULL)
+                    """,
+                    (email,),
                 )
-                VALUES (%s, NULL, NULL, 'app', 0, 0, NULL)
-                """,
-                (email,),
-            )
-            user_id = cursor.lastrowid
-            await cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
-            return await cursor.fetchone()
+                user_id = cursor.lastrowid
+                await cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+                return await cursor.fetchone()
+            except Exception as exc:
+                # Concurrent sign-in can hit unique_email; re-load existing row
+                errno = exc.args[0] if getattr(exc, "args", None) else None
+                msg = str(exc).lower()
+                if errno == 1062 or "duplicate" in msg:
+                    await cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
+                    user = await cursor.fetchone()
+                    if user:
+                        return user
+                raise
 
 
 async def request_signin_otp(get_db_connection, email: str) -> Dict[str, Any]:
@@ -182,7 +193,7 @@ async def verify_signin_otp(get_db_connection, email: str, otp_code: str) -> Dic
     async with get_db_connection() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
             await cursor.execute(
-                "SELECT * FROM users WHERE email = %s AND auth_provider = 'app'",
+                "SELECT * FROM users WHERE email = %s",
                 (email,),
             )
             user = await cursor.fetchone()
@@ -214,7 +225,7 @@ async def resend_signin_otp(get_db_connection, email: str) -> Dict[str, Any]:
     async with get_db_connection() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
             await cursor.execute(
-                "SELECT * FROM users WHERE email = %s AND auth_provider = 'app'",
+                "SELECT * FROM users WHERE email = %s",
                 (email,),
             )
             user = await cursor.fetchone()

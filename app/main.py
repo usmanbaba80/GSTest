@@ -124,6 +124,10 @@ async def get_db_connection():
         async with connection_pool.acquire() as conn:
             yield conn
     except aiomysql.Error as e:
+        # Data/integrity errors (e.g. duplicate key) are app-level — do NOT reset the pool
+        errno = e.args[0] if getattr(e, "args", None) else None
+        if errno in (1062, 1451, 1452, 1048, 1054):
+            raise
         logger.warning(f"⚠ PoolError detected: {e}. Resetting connection pool.")
         try:
             await init_connection_pool()
