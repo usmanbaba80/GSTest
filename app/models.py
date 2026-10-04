@@ -222,3 +222,25 @@ class CreateHistoryRequest(BaseModel):
         if not v.startswith(('http://', 'https://')):
             raise ValueError('URL must start with http:// or https://')
         return v
+
+
+class BulkBookmarksRequest(BaseModel):
+    """Bulk intake of bookmarks — each item becomes one DB record."""
+
+    bookmarks: List[CreateBookmarkRequest] = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Array of bookmarks to save",
+    )
+
+
+class BulkHistoryRequest(BaseModel):
+    """Bulk intake of history — each item becomes one DB record."""
+
+    history: List[CreateHistoryRequest] = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Array of history entries to save",
+    )

@@ -10,6 +10,8 @@ from app.auth import service as auth_service
 from app.logger import logger
 from app.models import (
     AuthResponse,
+    BulkBookmarksRequest,
+    BulkHistoryRequest,
     CreateBookmarkRequest,
     CreateHistoryRequest,
     EmailOnlyRequest,
@@ -201,6 +203,28 @@ async def add_bookmark(
     }
 
 
+@router.post("/bookmarks/bulk")
+async def add_bookmarks_bulk(
+    request: BulkBookmarksRequest,
+    current_user: UserProfile = Depends(auth_service.get_current_user),
+):
+    """
+    Bulk intake of bookmarks.
+    Accepts an array; each item is saved as a separate user_bookmarks row.
+    """
+    result = await auth_service.create_app_bookmarks_bulk(
+        _db(),
+        user_id=current_user.id,
+        items=[item.dict() if hasattr(item, "dict") else item.model_dump() for item in request.bookmarks],
+    )
+    return {
+        "status_code": 201,
+        "success": True,
+        "message": f"Bulk bookmarks processed: {result['saved_count']} saved, {result['failed_count']} failed",
+        **result,
+    }
+
+
 @router.delete("/bookmarks/{bookmark_id}")
 async def remove_bookmark(
     bookmark_id: int,
@@ -257,6 +281,28 @@ async def record_history(
         "success": True,
         "message": "History entry recorded",
         "data": entry,
+    }
+
+
+@router.post("/history/bulk")
+async def record_history_bulk(
+    request: BulkHistoryRequest,
+    current_user: UserProfile = Depends(auth_service.get_current_user),
+):
+    """
+    Bulk intake of history.
+    Accepts an array; each item is saved as a separate user_history row.
+    """
+    result = await auth_service.create_app_history_bulk(
+        _db(),
+        user_id=current_user.id,
+        items=[item.dict() if hasattr(item, "dict") else item.model_dump() for item in request.history],
+    )
+    return {
+        "status_code": 201,
+        "success": True,
+        "message": f"Bulk history processed: {result['saved_count']} saved, {result['failed_count']} failed",
+        **result,
     }
 
 

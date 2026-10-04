@@ -364,6 +364,36 @@ async def create_app_bookmark(
     )
 
 
+async def create_app_bookmarks_bulk(
+    get_db_connection,
+    user_id: int,
+    items: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Save each bookmark as its own record. Continues on per-item failures."""
+    saved: List[BookmarkItem] = []
+    errors: List[Dict[str, Any]] = []
+
+    for index, item in enumerate(items):
+        try:
+            bookmark = await create_app_bookmark(
+                get_db_connection,
+                user_id=user_id,
+                url=item["url"],
+                title=item.get("title"),
+                folder=item.get("folder"),
+            )
+            saved.append(bookmark)
+        except Exception as exc:
+            errors.append({"index": index, "url": item.get("url"), "error": str(exc)})
+
+    return {
+        "saved_count": len(saved),
+        "failed_count": len(errors),
+        "data": saved,
+        "errors": errors,
+    }
+
+
 async def delete_app_bookmark(get_db_connection, user_id: int, bookmark_id: int) -> bool:
     async with get_db_connection() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
@@ -406,6 +436,45 @@ async def create_app_history_entry(
         visited_at=row["visited_at"].isoformat() if row.get("visited_at") else None,
         source=row.get("source") or "app",
     )
+
+
+async def create_app_history_bulk(
+    get_db_connection,
+    user_id: int,
+    items: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Save each history entry as its own record. Continues on per-item failures."""
+    saved: List[HistoryItem] = []
+    errors: List[Dict[str, Any]] = []
+
+    for index, item in enumerate(items):
+        try:
+            visited_at = item.get("visited_at")
+            if isinstance(visited_at, str) and visited_at.strip():
+                try:
+                    visited_at = datetime.fromisoformat(visited_at.replace("Z", "+00:00"))
+                except ValueError as exc:
+                    raise ValueError("Invalid visited_at format. Use ISO 8601.") from exc
+            else:
+                visited_at = None
+
+            entry = await create_app_history_entry(
+                get_db_connection,
+                user_id=user_id,
+                url=item["url"],
+                title=item.get("title"),
+                visited_at=visited_at,
+            )
+            saved.append(entry)
+        except Exception as exc:
+            errors.append({"index": index, "url": item.get("url"), "error": str(exc)})
+
+    return {
+        "saved_count": len(saved),
+        "failed_count": len(errors),
+        "data": saved,
+        "errors": errors,
+    }
 
 
 async def delete_app_history_entry(get_db_connection, user_id: int, history_id: int) -> bool:

@@ -178,6 +178,27 @@
           }
         },
         {
+          "name": "Bulk Create Bookmarks",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{access_token}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookmarks\": [\n    {\n      \"title\": \"Example 1\",\n      \"url\": \"https://example.com\",\n      \"folder\": \"Work\"\n    },\n    {\n      \"title\": \"Example 2\",\n      \"url\": \"https://example.org\",\n      \"folder\": \"Personal\"\n    }\n  ]\n}"
+            },
+            "url": "{{base_url}}/auth/bookmarks/bulk",
+            "description": "Bulk intake. Each array item is stored as one bookmark row."
+          }
+        },
+        {
           "name": "List Bookmarks",
           "request": {
             "auth": {
@@ -251,6 +272,27 @@
               "raw": "{\n  \"title\": \"Example visit\",\n  \"url\": \"https://example.com\"\n}"
             },
             "url": "{{base_url}}/auth/history"
+          }
+        },
+        {
+          "name": "Bulk Record History",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{access_token}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"history\": [\n    {\n      \"title\": \"Visit 1\",\n      \"url\": \"https://example.com\",\n      \"visited_at\": \"2026-10-01T10:00:00Z\"\n    },\n    {\n      \"title\": \"Visit 2\",\n      \"url\": \"https://example.org\"\n    }\n  ]\n}"
+            },
+            "url": "{{base_url}}/auth/history/bulk",
+            "description": "Bulk intake. Each array item is stored as one history row."
           }
         },
         {

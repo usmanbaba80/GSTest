@@ -146,7 +146,8 @@ Current profile + bookmarks + history.
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/auth/bookmarks` | List bookmarks |
-| `POST` | `/auth/bookmarks` | Save bookmark |
+| `POST` | `/auth/bookmarks` | Save one bookmark |
+| `POST` | `/auth/bookmarks/bulk` | Bulk save bookmarks (each item = one row) |
 | `DELETE` | `/auth/bookmarks/{id}` | Delete bookmark |
 
 ## History
@@ -154,7 +155,8 @@ Current profile + bookmarks + history.
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/auth/history` | List history |
-| `POST` | `/auth/history` | Record a visit |
+| `POST` | `/auth/history` | Record one visit |
+| `POST` | `/auth/history/bulk` | Bulk save history (each item = one row) |
 | `DELETE` | `/auth/history/{id}` | Delete one entry |
 | `DELETE` | `/auth/history/clear` | Clear all history |
 | `DELETE` | `/auth/history/range?from_epoch=<unix>` | Delete history from epoch → now |
