@@ -170,10 +170,9 @@ async def get_me(current_user: UserProfile = Depends(auth_service.get_current_us
 @router.get("/bookmarks")
 async def list_bookmarks(
     current_user: UserProfile = Depends(auth_service.get_current_user),
-    limit: int = Query(100, ge=1, le=500),
 ):
-    """List bookmarks for the authenticated user (tied to their email)."""
-    bookmarks = await auth_service.get_user_bookmarks(_db(), current_user.id, limit=limit)
+    """List all bookmarks for the authenticated user (no pagination)."""
+    bookmarks = await auth_service.get_user_bookmarks(_db(), current_user.id)
     return {
         "status_code": 200,
         "success": True,
@@ -193,6 +192,7 @@ async def add_bookmark(
         user_id=current_user.id,
         url=request.url,
         title=request.title,
+        favicon=request.favicon,
         folder=request.folder,
     )
     return {
@@ -244,10 +244,9 @@ async def remove_bookmark(
 @router.get("/history")
 async def list_history(
     current_user: UserProfile = Depends(auth_service.get_current_user),
-    limit: int = Query(100, ge=1, le=500),
 ):
-    """List browsing history for the authenticated user (tied to their email)."""
-    history = await auth_service.get_user_history(_db(), current_user.id, limit=limit)
+    """List all browsing history for the authenticated user (no pagination)."""
+    history = await auth_service.get_user_history(_db(), current_user.id)
     return {
         "status_code": 200,
         "success": True,
@@ -274,6 +273,7 @@ async def record_history(
         user_id=current_user.id,
         url=request.url,
         title=request.title,
+        favicon=request.favicon,
         visited_at=visited_at,
     )
     return {

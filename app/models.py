@@ -121,6 +121,7 @@ class BookmarkItem(BaseModel):
     id: Optional[int] = None
     title: Optional[str] = None
     url: str
+    favicon: Optional[str] = None
     folder: Optional[str] = None
     source: str = "app"
 
@@ -131,6 +132,7 @@ class HistoryItem(BaseModel):
     id: Optional[int] = None
     title: Optional[str] = None
     url: str
+    favicon: Optional[str] = None
     visited_at: Optional[str] = None
     source: str = "app"
 
@@ -199,6 +201,7 @@ class CreateBookmarkRequest(BaseModel):
 
     title: Optional[str] = Field(None, max_length=512, description="Page title")
     url: str = Field(..., min_length=1, max_length=2048, description="Bookmark URL")
+    favicon: Optional[str] = Field(None, description="Favicon URL or data URI")
     folder: Optional[str] = Field(None, max_length=255, description="Folder or category name")
 
     @validator('url')
@@ -214,6 +217,7 @@ class CreateHistoryRequest(BaseModel):
 
     title: Optional[str] = Field(None, max_length=512, description="Page title")
     url: str = Field(..., min_length=1, max_length=2048, description="Visited page URL")
+    favicon: Optional[str] = Field(None, description="Favicon URL or data URI")
     visited_at: Optional[str] = Field(None, description="Visit timestamp (ISO 8601). Defaults to now.")
 
     @validator('url')

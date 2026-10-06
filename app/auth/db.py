@@ -28,6 +28,7 @@ AUTH_TABLES_SQL = [
         user_id INT NOT NULL,
         title VARCHAR(512) NULL,
         url TEXT NOT NULL,
+        favicon TEXT NULL,
         folder VARCHAR(255) NULL,
         source VARCHAR(32) NOT NULL DEFAULT 'app',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -41,6 +42,7 @@ AUTH_TABLES_SQL = [
         user_id INT NOT NULL,
         title VARCHAR(512) NULL,
         url TEXT NOT NULL,
+        favicon TEXT NULL,
         visited_at TIMESTAMP NULL,
         source VARCHAR(32) NOT NULL DEFAULT 'app',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -49,7 +51,6 @@ AUTH_TABLES_SQL = [
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
 ]
-
 # For existing deployments created before email verification was added
 AUTH_ALTER_SQL = [
     "ALTER TABLE users ADD COLUMN email_verified TINYINT(1) NOT NULL DEFAULT 0",
@@ -58,6 +59,8 @@ AUTH_ALTER_SQL = [
     "ALTER TABLE users ADD COLUMN otp_expires_at TIMESTAMP NULL",
     "ALTER TABLE users ADD COLUMN otp_last_sent_at TIMESTAMP NULL",
     "ALTER TABLE users ADD COLUMN token_version INT NOT NULL DEFAULT 0",
+    "ALTER TABLE user_bookmarks ADD COLUMN favicon TEXT NULL",
+    "ALTER TABLE user_history ADD COLUMN favicon TEXT NULL",
 ]
 
 

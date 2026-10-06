@@ -172,7 +172,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Example\",\n  \"url\": \"https://example.com\",\n  \"folder\": \"Work\"\n}"
+              "raw": "{\n  \"title\": \"Example\",\n  \"url\": \"https://example.com\",\n  \"favicon\": \"https://example.com/favicon.ico\",\n  \"folder\": \"Work\"\n}"
             },
             "url": "{{base_url}}/auth/bookmarks"
           }
@@ -192,7 +192,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"bookmarks\": [\n    {\n      \"title\": \"Example 1\",\n      \"url\": \"https://example.com\",\n      \"folder\": \"Work\"\n    },\n    {\n      \"title\": \"Example 2\",\n      \"url\": \"https://example.org\",\n      \"folder\": \"Personal\"\n    }\n  ]\n}"
+              "raw": "{\n  \"bookmarks\": [\n    {\n      \"title\": \"Example 1\",\n      \"url\": \"https://example.com\",\n      \"favicon\": \"https://example.com/favicon.ico\",\n      \"folder\": \"Work\"\n    },\n    {\n      \"title\": \"Example 2\",\n      \"url\": \"https://example.org\",\n      \"favicon\": \"https://example.org/favicon.ico\",\n      \"folder\": \"Personal\"\n    }\n  ]\n}"
             },
             "url": "{{base_url}}/auth/bookmarks/bulk",
             "description": "Bulk intake. Each array item is stored as one bookmark row."
@@ -209,14 +209,8 @@
             },
             "method": "GET",
             "header": [],
-            "url": {
-              "raw": "{{base_url}}/auth/bookmarks?limit=100",
-              "host": ["{{base_url}}"],
-              "path": ["auth", "bookmarks"],
-              "query": [
-                { "key": "limit", "value": "100" }
-              ]
-            }
+            "url": "{{base_url}}/auth/bookmarks",
+            "description": "Returns all bookmarks for the user (no pagination), including favicon."
           }
         },
         {
@@ -269,7 +263,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Example visit\",\n  \"url\": \"https://example.com\"\n}"
+              "raw": "{\n  \"title\": \"Example visit\",\n  \"url\": \"https://example.com\",\n  \"favicon\": \"https://example.com/favicon.ico\"\n}"
             },
             "url": "{{base_url}}/auth/history"
           }
@@ -289,7 +283,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"history\": [\n    {\n      \"title\": \"Visit 1\",\n      \"url\": \"https://example.com\",\n      \"visited_at\": \"2026-10-01T10:00:00Z\"\n    },\n    {\n      \"title\": \"Visit 2\",\n      \"url\": \"https://example.org\"\n    }\n  ]\n}"
+              "raw": "{\n  \"history\": [\n    {\n      \"title\": \"Visit 1\",\n      \"url\": \"https://example.com\",\n      \"favicon\": \"https://example.com/favicon.ico\",\n      \"visited_at\": \"2026-10-01T10:00:00Z\"\n    },\n    {\n      \"title\": \"Visit 2\",\n      \"url\": \"https://example.org\",\n      \"favicon\": \"https://example.org/favicon.ico\"\n    }\n  ]\n}"
             },
             "url": "{{base_url}}/auth/history/bulk",
             "description": "Bulk intake. Each array item is stored as one history row."
@@ -306,14 +300,8 @@
             },
             "method": "GET",
             "header": [],
-            "url": {
-              "raw": "{{base_url}}/auth/history?limit=100",
-              "host": ["{{base_url}}"],
-              "path": ["auth", "history"],
-              "query": [
-                { "key": "limit", "value": "100" }
-              ]
-            }
+            "url": "{{base_url}}/auth/history",
+            "description": "Returns all history for the user (no pagination), including favicon."
           }
         },
         {

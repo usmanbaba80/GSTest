@@ -258,18 +258,17 @@ async def get_user_by_id(get_db_connection, user_id: int) -> Optional[Dict[str, 
             return await cursor.fetchone()
 
 
-async def get_user_bookmarks(get_db_connection, user_id: int, limit: int = 100) -> List[BookmarkItem]:
+async def get_user_bookmarks(get_db_connection, user_id: int) -> List[BookmarkItem]:
     async with get_db_connection() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
             await cursor.execute(
                 """
-                SELECT id, title, url, folder, source
+                SELECT id, title, url, favicon, folder, source
                 FROM user_bookmarks
                 WHERE user_id = %s
                 ORDER BY created_at DESC
-                LIMIT %s
                 """,
-                (user_id, limit),
+                (user_id,),
             )
             rows = await cursor.fetchall()
 
@@ -278,6 +277,7 @@ async def get_user_bookmarks(get_db_connection, user_id: int, limit: int = 100) 
             id=row["id"],
             title=row.get("title"),
             url=row["url"],
+            favicon=row.get("favicon"),
             folder=row.get("folder"),
             source=row.get("source") or "app",
         )
@@ -285,18 +285,17 @@ async def get_user_bookmarks(get_db_connection, user_id: int, limit: int = 100) 
     ]
 
 
-async def get_user_history(get_db_connection, user_id: int, limit: int = 100) -> List[HistoryItem]:
+async def get_user_history(get_db_connection, user_id: int) -> List[HistoryItem]:
     async with get_db_connection() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
             await cursor.execute(
                 """
-                SELECT id, title, url, visited_at, source
+                SELECT id, title, url, favicon, visited_at, source
                 FROM user_history
                 WHERE user_id = %s
                 ORDER BY visited_at DESC, created_at DESC
-                LIMIT %s
                 """,
-                (user_id, limit),
+                (user_id,),
             )
             rows = await cursor.fetchall()
 
@@ -305,6 +304,7 @@ async def get_user_history(get_db_connection, user_id: int, limit: int = 100) ->
             id=row["id"],
             title=row.get("title"),
             url=row["url"],
+            favicon=row.get("favicon"),
             visited_at=row["visited_at"].isoformat() if row.get("visited_at") else None,
             source=row.get("source") or "app",
         )
@@ -317,6 +317,7 @@ async def create_app_bookmark(
     user_id: int,
     url: str,
     title: Optional[str] = None,
+    favicon: Optional[str] = None,
     folder: Optional[str] = None,
 ) -> BookmarkItem:
     async with get_db_connection() as conn:
@@ -333,24 +334,24 @@ async def create_app_bookmark(
                 await cursor.execute(
                     """
                     UPDATE user_bookmarks
-                    SET title = %s, folder = %s, created_at = CURRENT_TIMESTAMP
+                    SET title = %s, favicon = %s, folder = %s, created_at = CURRENT_TIMESTAMP
                     WHERE id = %s AND user_id = %s
                     """,
-                    (title, folder, existing["id"], user_id),
+                    (title, favicon, folder, existing["id"], user_id),
                 )
                 bookmark_id = existing["id"]
             else:
                 await cursor.execute(
                     """
-                    INSERT INTO user_bookmarks (user_id, title, url, folder, source)
-                    VALUES (%s, %s, %s, %s, 'app')
+                    INSERT INTO user_bookmarks (user_id, title, url, favicon, folder, source)
+                    VALUES (%s, %s, %s, %s, %s, 'app')
                     """,
-                    (user_id, title, url, folder),
+                    (user_id, title, url, favicon, folder),
                 )
                 bookmark_id = cursor.lastrowid
 
             await cursor.execute(
-                "SELECT id, title, url, folder, source FROM user_bookmarks WHERE id = %s",
+                "SELECT id, title, url, favicon, folder, source FROM user_bookmarks WHERE id = %s",
                 (bookmark_id,),
             )
             row = await cursor.fetchone()
@@ -359,6 +360,7 @@ async def create_app_bookmark(
         id=row["id"],
         title=row.get("title"),
         url=row["url"],
+        favicon=row.get("favicon"),
         folder=row.get("folder"),
         source=row.get("source") or "app",
     )
@@ -380,6 +382,7 @@ async def create_app_bookmarks_bulk(
                 user_id=user_id,
                 url=item["url"],
                 title=item.get("title"),
+                favicon=item.get("favicon"),
                 folder=item.get("folder"),
             )
             saved.append(bookmark)
@@ -409,6 +412,7 @@ async def create_app_history_entry(
     user_id: int,
     url: str,
     title: Optional[str] = None,
+    favicon: Optional[str] = None,
     visited_at: Optional[datetime] = None,
 ) -> HistoryItem:
     visit_time = visited_at or datetime.now(timezone.utc)
@@ -417,14 +421,14 @@ async def create_app_history_entry(
         async with conn.cursor(aiomysql.DictCursor) as cursor:
             await cursor.execute(
                 """
-                INSERT INTO user_history (user_id, title, url, visited_at, source)
-                VALUES (%s, %s, %s, %s, 'app')
+                INSERT INTO user_history (user_id, title, url, favicon, visited_at, source)
+                VALUES (%s, %s, %s, %s, %s, 'app')
                 """,
-                (user_id, title, url, visit_time),
+                (user_id, title, url, favicon, visit_time),
             )
             history_id = cursor.lastrowid
             await cursor.execute(
-                "SELECT id, title, url, visited_at, source FROM user_history WHERE id = %s",
+                "SELECT id, title, url, favicon, visited_at, source FROM user_history WHERE id = %s",
                 (history_id,),
             )
             row = await cursor.fetchone()
@@ -433,6 +437,7 @@ async def create_app_history_entry(
         id=row["id"],
         title=row.get("title"),
         url=row["url"],
+        favicon=row.get("favicon"),
         visited_at=row["visited_at"].isoformat() if row.get("visited_at") else None,
         source=row.get("source") or "app",
     )
@@ -463,6 +468,7 @@ async def create_app_history_bulk(
                 user_id=user_id,
                 url=item["url"],
                 title=item.get("title"),
+                favicon=item.get("favicon"),
                 visited_at=visited_at,
             )
             saved.append(entry)
