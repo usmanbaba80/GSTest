@@ -164,8 +164,8 @@ Current profile + bookmarks + history.
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/auth/history` | List **all** history (no pagination); includes `favicon` |
-| `POST` | `/auth/history` | Record one visit (`title`, `url`, optional `favicon`, optional `visited_at`) |
-| `POST` | `/auth/history/bulk` | Bulk save history (each item = one row; supports `favicon`) |
+| `POST` | `/auth/history` | Record one visit (`title`, `url` may be empty, optional `favicon`, optional `visited_at`) |
+| `POST` | `/auth/history/bulk` | Bulk save history (each item = one row; supports empty `url` and `favicon`) |
 | `DELETE` | `/auth/history/{id}` | Delete one entry |
 | `DELETE` | `/auth/history/clear` | Clear all history |
 | `DELETE` | `/auth/history/range?from_epoch=<unix>` | Delete history from epoch → now |

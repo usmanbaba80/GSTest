@@ -216,13 +216,21 @@ class CreateHistoryRequest(BaseModel):
     """Request model for recording a history entry."""
 
     title: Optional[str] = Field(None, max_length=512, description="Page title")
-    url: str = Field(..., min_length=1, max_length=2048, description="Visited page URL")
+    url: str = Field(
+        default="",
+        max_length=2048,
+        description="Visited page URL (may be empty)",
+    )
     favicon: Optional[str] = Field(None, description="Favicon URL or data URI")
     visited_at: Optional[str] = Field(None, description="Visit timestamp (ISO 8601). Defaults to now.")
 
-    @validator('url')
+    @validator('url', pre=True)
     def validate_url(cls, v):
-        v = v.strip()
+        if v is None:
+            return ""
+        v = str(v).strip()
+        if not v:
+            return ""
         if not v.startswith(('http://', 'https://')):
             raise ValueError('URL must start with http:// or https://')
         return v
