@@ -2338,20 +2338,20 @@ async def take_screenshot(page, url, output_path, full_page, ss_width, ss_height
     await setup_stealth_mode(page, url)
 
     if is_ebay:
-        logger.info(f"eBay URL detected, warming up session before search page: {url}")
+        # Short warmup only — a long homepage wait burns the global request budget
+        logger.info(f"eBay URL detected, short session warmup: {url}")
         try:
-            await page.goto(EBAY_WARMUP_URL, wait_until="domcontentloaded", timeout=45000)
-            await asyncio.sleep(2)
+            await page.goto(EBAY_WARMUP_URL, wait_until="commit", timeout=12000)
+            await asyncio.sleep(0.5)
         except Exception as e:
             logger.warning(f"eBay homepage warmup failed (continuing): {e}")
     
     if is_ebay:
         logger.warning(f"🚨 PROBLEMATIC SITE DETECTED: {url} - Using aggressive timeouts")
-        # Prefer DOM-ready first for eBay: 'commit' often returns before documentElement exists
+        # commit first (fast), then wait for DOM via ensure_page_document
         strategies = [
-            {"wait_until": "domcontentloaded", "timeout": 45000, "description": "DOM ready (45s)"},
-            {"wait_until": "load", "timeout": 60000, "description": "Full load (60s)"},
-            {"wait_until": "commit", "timeout": 20000, "description": "Initial commit (20s)"},
+            {"wait_until": "commit", "timeout": 25000, "description": "Initial commit (25s)"},
+            {"wait_until": "domcontentloaded", "timeout": 35000, "description": "DOM ready (35s)"},
         ]
     elif is_problematic_site:
         logger.warning(f"🚨 PROBLEMATIC SITE DETECTED: {url} - Using aggressive timeouts")
@@ -2386,20 +2386,19 @@ async def take_screenshot(page, url, output_path, full_page, ss_width, ss_height
             logger.debug(f"Navigation attempt {i+1}/{len(strategies)}: {strategy['description']} (timeout: {strategy['timeout']}ms)")
             
             await page.goto(url, wait_until=strategy["wait_until"], timeout=strategy["timeout"])
-            # await page.goto(url, wait_until=strategy["wait_until"])
             
-            # Post-load wait (eBay and other bot-sensitive sites need more time)
-            post_load_wait = 2.5 if is_ebay else (1.0 if is_problematic_site else 0.1)
+            # Post-load wait (eBay needs a bit, but avoid burning the global timeout)
+            post_load_wait = 1.5 if is_ebay else (1.0 if is_problematic_site else 0.1)
             logger.debug(f"Allowing {post_load_wait}s for dynamic content to load")
             await asyncio.sleep(post_load_wait)
-            
-            # Try to wait for network idle as a bonus, but don't fail if it times out
-            try:
-                await page.wait_for_load_state("networkidle", timeout=30000)  # Increased to 30s for large pages
-                logger.debug("Network idle achieved")
-            except Exception as e:
-                logger.debug(f"Network idle timeout - continuing anyway: {e}")
-                # Don't fail - network idle is optional
+
+            # networkidle is optional and can stall for 30s on eBay — skip for eBay
+            if not is_ebay:
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=15000)
+                    logger.debug("Network idle achieved")
+                except Exception as e:
+                    logger.debug(f"Network idle timeout - continuing anyway: {e}")
             
             navigation_successful = True
             logger.info(f"✅ Page loaded successfully using strategy: {strategy['description']} ({strategy['timeout']}ms)")
@@ -2781,7 +2780,12 @@ async def _process_screenshot_request(request: ScreenshotRequest, start_time: fl
         
         # ✅ STEP 2: Get a page from the optimized browser pool with retry logic
         url_str = str(request.url)
-        use_proxy = False
+        # Use proxy immediately for configured domains (eBay always bot-blocks without it)
+        use_proxy = bool(
+            settings.proxy_url and _url_matches_domain(url_str, _proxy_domains_list())
+        )
+        if use_proxy:
+            logger.info(f"📷 Using proxy up-front for domain-matched URL: {url_str}")
         max_browser_retries = 3
         for browser_attempt in range(max_browser_retries):
             try:
@@ -2811,14 +2815,15 @@ async def _process_screenshot_request(request: ScreenshotRequest, start_time: fl
         # ✅ STEP 3: Take the screenshot with optimized timeout and retry logic
         links, slices = None, None
         last_error = None
+        # eBay/proxy paths need a larger budget (warmup + slow nav)
+        is_proxy_domain = _url_matches_domain(url_str, _proxy_domains_list())
+        global_timeout = 180 if is_proxy_domain else 90
         
         for attempt in range(settings.screenshot_retry_attempts + 1):
             try:
                 # Use reduced timeout for faster processing
                 page.set_default_timeout(settings.screenshot_timeout * 1000)
                 
-                # GLOBAL REQUEST TIMEOUT: Based on single request timing
-                global_timeout = 90  # 90 seconds max for entire request (57s + buffer)
                 links, slices = await asyncio.wait_for(
                     take_screenshot(
                         page, 
@@ -2844,7 +2849,7 @@ async def _process_screenshot_request(request: ScreenshotRequest, start_time: fl
             except BotBlockedPageError as e:
                 last_error = str(e)
                 logger.error(f"📷 Bot-blocked page for URL: {request.url}")
-                if not use_proxy and settings.proxy_url and _url_matches_domain(url_str, _proxy_domains_list()):
+                if not use_proxy and settings.proxy_url and is_proxy_domain:
                     logger.info("📷 Retrying screenshot with proxy after bot-block")
                     await browser_pool.release_page(page)
                     page, browser_info = await browser_pool.get_page(
@@ -2853,6 +2858,7 @@ async def _process_screenshot_request(request: ScreenshotRequest, start_time: fl
                         use_proxy=True,
                     )
                     use_proxy = True
+                    proxy_timeout = max(global_timeout, 180)
                     try:
                         links, slices = await asyncio.wait_for(
                             take_screenshot(
@@ -2863,7 +2869,7 @@ async def _process_screenshot_request(request: ScreenshotRequest, start_time: fl
                                 request.ss_width,
                                 request.ss_height,
                             ),
-                            timeout=global_timeout,
+                            timeout=proxy_timeout,
                         )
                         break
                     except BotBlockedPageError:
@@ -2878,7 +2884,7 @@ async def _process_screenshot_request(request: ScreenshotRequest, start_time: fl
                     except asyncio.TimeoutError:
                         raise HTTPException(
                             status_code=408,
-                            detail=f"Request timeout after proxy retry ({global_timeout}s).",
+                            detail=f"Request timeout after proxy retry ({proxy_timeout}s).",
                         )
                     except Exception as proxy_err:
                         last_error = str(proxy_err)
