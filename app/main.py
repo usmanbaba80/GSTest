@@ -2251,6 +2251,54 @@ async def is_bot_blocked_page(page) -> bool:
         return False
 
 
+async def ensure_page_document(page, timeout_ms: int = 15000) -> bool:
+    """
+    Wait until documentElement/body exist.
+    Playwright 'commit' can succeed before the DOM is available (common on eBay).
+    """
+    try:
+        await page.wait_for_function(
+            "() => !!(document && document.documentElement && document.body)",
+            timeout=timeout_ms,
+        )
+        return True
+    except Exception as e:
+        logger.warning(f"Document not ready after {timeout_ms}ms: {e}")
+        return False
+
+
+async def get_page_dimensions(page, fallback_width: int, fallback_height: int) -> Dict[str, Any]:
+    """Read page scroll size safely when documentElement/body may be missing."""
+    try:
+        dimensions = await page.evaluate(
+            """() => {
+                const root = document.documentElement || document.body;
+                if (!root) {
+                    return {
+                        width: window.innerWidth || 0,
+                        height: window.innerHeight || 0,
+                        ready: false
+                    };
+                }
+                return {
+                    width: root.scrollWidth || window.innerWidth || 0,
+                    height: root.scrollHeight || window.innerHeight || 0,
+                    ready: true
+                };
+            }"""
+        )
+        width = int(dimensions.get("width") or 0) or fallback_width
+        height = int(dimensions.get("height") or 0) or fallback_height
+        return {
+            "width": width,
+            "height": height,
+            "ready": bool(dimensions.get("ready")),
+        }
+    except Exception as e:
+        logger.warning(f"Failed to read page dimensions, using viewport fallback: {e}")
+        return {"width": fallback_width, "height": fallback_height, "ready": False}
+
+
 async def setup_stealth_mode(page, url):
     """
     Configure stealth HTTP headers. Navigator overrides run once via STEALTH_INIT_SCRIPT
@@ -2297,16 +2345,22 @@ async def take_screenshot(page, url, output_path, full_page, ss_width, ss_height
         except Exception as e:
             logger.warning(f"eBay homepage warmup failed (continuing): {e}")
     
-    if is_problematic_site:
+    if is_ebay:
         logger.warning(f"🚨 PROBLEMATIC SITE DETECTED: {url} - Using aggressive timeouts")
-        # Ultra-aggressive timeouts for problematic sites
+        # Prefer DOM-ready first for eBay: 'commit' often returns before documentElement exists
+        strategies = [
+            {"wait_until": "domcontentloaded", "timeout": 45000, "description": "DOM ready (45s)"},
+            {"wait_until": "load", "timeout": 60000, "description": "Full load (60s)"},
+            {"wait_until": "commit", "timeout": 20000, "description": "Initial commit (20s)"},
+        ]
+    elif is_problematic_site:
+        logger.warning(f"🚨 PROBLEMATIC SITE DETECTED: {url} - Using aggressive timeouts")
         strategies = [
             {"wait_until": "commit", "timeout": 20000, "description": "Initial commit (20s)"},
             {"wait_until": "domcontentloaded", "timeout": 40000, "description": "DOM ready (40s)"},
             {"wait_until": "load", "timeout": 60000, "description": "Full load (60s)"}
         ]
     else:
-        # Standard aggressive timeouts for normal sites
         strategies = [
             {"wait_until": "commit", "timeout": 20000, "description": "Initial commit (20s)"},
             {"wait_until": "domcontentloaded", "timeout": 40000, "description": "DOM ready (40s)"},
@@ -2377,6 +2431,15 @@ async def take_screenshot(page, url, output_path, full_page, ss_width, ss_height
         
         logger.error(f"🚫 All navigation strategies failed for {url}. Last error: {last_error}")
         raise Exception(f"Failed to load page after {len(strategies)} attempts. Last error: {last_error}")
+
+    # 'commit' (and some bot shells) can finish before documentElement exists
+    doc_ready = await ensure_page_document(page, timeout_ms=20000 if is_ebay else 10000)
+    if not doc_ready:
+        logger.error(f"🚫 Page document never became ready for {url}")
+        raise BotBlockedPageError(
+            "Target page loaded without a usable DOM (common on eBay bot/error shells). "
+            "Try a residential/unblocker proxy via PROXY_URL."
+        )
     
     if await is_bot_blocked_page(page):
         logger.error(f"🚫 Bot-block page detected for {url}")
@@ -2390,13 +2453,8 @@ async def take_screenshot(page, url, output_path, full_page, ss_width, ss_height
     links = await extract_links(page)
     logger.debug(f"Extracted {len(links)} links from page")
 
-    # Get page dimensions to determine screenshot strategy
-    dimensions = await page.evaluate('''() => {
-        return {
-            width: document.documentElement.scrollWidth,
-            height: document.documentElement.scrollHeight
-        }
-    }''')
+    # Get page dimensions to determine screenshot strategy (null-safe)
+    dimensions = await get_page_dimensions(page, ss_width, ss_height)
     
     logger.debug(f"Page dimensions: {dimensions['width']}x{dimensions['height']}")
 
@@ -2795,18 +2853,40 @@ async def _process_screenshot_request(request: ScreenshotRequest, start_time: fl
                         use_proxy=True,
                     )
                     use_proxy = True
-                    links, slices = await asyncio.wait_for(
-                        take_screenshot(
-                            page,
-                            url_str,
-                            output_path,
-                            request.full_page,
-                            request.ss_width,
-                            request.ss_height,
-                        ),
-                        timeout=global_timeout,
-                    )
-                    break
+                    try:
+                        links, slices = await asyncio.wait_for(
+                            take_screenshot(
+                                page,
+                                url_str,
+                                output_path,
+                                request.full_page,
+                                request.ss_width,
+                                request.ss_height,
+                            ),
+                            timeout=global_timeout,
+                        )
+                        break
+                    except BotBlockedPageError:
+                        raise HTTPException(
+                            status_code=403,
+                            detail=(
+                                "Site blocked automated browser access even with proxy. "
+                                "For eBay, use a residential/unblocker PROXY_URL "
+                                "(SERP-only proxies often fail)."
+                            ),
+                        )
+                    except asyncio.TimeoutError:
+                        raise HTTPException(
+                            status_code=408,
+                            detail=f"Request timeout after proxy retry ({global_timeout}s).",
+                        )
+                    except Exception as proxy_err:
+                        last_error = str(proxy_err)
+                        logger.error(f"📷 Proxy retry failed for {request.url}: {proxy_err}")
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Screenshot failed after proxy retry: {str(proxy_err)[:100]}",
+                        )
                 raise HTTPException(
                     status_code=403,
                     detail=(
@@ -3230,15 +3310,21 @@ async def get_detailed_search_metrics() -> Dict[str, Any]:
 
 
 async def extract_links(page):
-
-    return await page.evaluate('''() => {
-        return Array.from(document.querySelectorAll('a'))
-            .filter(a => a.innerText.trim().length > 0)
-            .map(a => ({
-                href: a.href,
-                text: a.innerText.trim()
-            }));
-    }''')
+    try:
+        return await page.evaluate('''() => {
+            if (!document || !document.body) {
+                return [];
+            }
+            return Array.from(document.querySelectorAll('a'))
+                .filter(a => a.innerText && a.innerText.trim().length > 0)
+                .map(a => ({
+                    href: a.href,
+                    text: a.innerText.trim()
+                }));
+        }''')
+    except Exception as e:
+        logger.warning(f"Link extraction skipped: {e}")
+        return []
 
 
 
