@@ -36,9 +36,9 @@ class SearchRequest(BaseModel):
         max_length=500,
         description="Search query (1-500 characters)"
     )
-    searchType: Literal['general', 'nws', 'isch', 'shop', 'videos', 'ai'] = Field(
+    searchType: Literal['general', 'nws', 'isch', 'shop'] = Field(
         ...,
-        description="Type of search: general, nws (news), isch (images), shop (shopping), videos (YouTube), ai (Google AI Mode)"
+        description="Type of search: general, nws (news), isch (images), shop (shopping)"
     )
     start: int = Field(
         default=0, 
@@ -108,13 +108,6 @@ class EmailOnlyRequest(BaseModel):
         return v.lower().strip()
 
 
-# Backwards-compatible aliases
-SignupRequest = EmailOnlyRequest
-LoginRequest = EmailOnlyRequest
-ResendOtpRequest = EmailOnlyRequest
-ForgotPasswordRequest = EmailOnlyRequest
-
-
 class BookmarkItem(BaseModel):
     """A saved bookmark."""
 
@@ -163,7 +156,7 @@ class AuthResponse(BaseModel):
     history: Optional[List[HistoryItem]] = None
 
 
-class SignupPendingResponse(BaseModel):
+class OtpPendingResponse(BaseModel):
     """OTP sent; client must verify before receiving JWT."""
 
     status_code: int = 200
@@ -173,9 +166,6 @@ class SignupPendingResponse(BaseModel):
     email_verified: bool = False
     requires_verification: bool = True
     otp_expires_in: int
-
-
-OtpPendingResponse = SignupPendingResponse
 
 
 class VerifyOtpRequest(BaseModel):
@@ -191,9 +181,6 @@ class VerifyOtpRequest(BaseModel):
     @validator('otp_code')
     def normalize_otp(cls, v):
         return v.strip()
-
-
-VerifyEmailRequest = VerifyOtpRequest
 
 
 class CreateBookmarkRequest(BaseModel):

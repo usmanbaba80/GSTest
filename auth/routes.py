@@ -6,9 +6,9 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.security import HTTPAuthorizationCredentials
 
-from app.auth import service as auth_service
-from app.logger import logger
-from app.models import (
+from auth import service as auth_service
+from logger import logger
+from models import (
     AuthResponse,
     BulkBookmarksRequest,
     BulkHistoryRequest,
@@ -20,12 +20,20 @@ from app.models import (
     VerifyOtpRequest,
 )
 
-router = APIRouter(prefix="/auth", tags=["Authentication"])
+router = APIRouter(
+    prefix="/auth",
+    tags=["Authentication"],
+    dependencies=[Depends(auth_service.require_auth_configured)],
+)
 
 
 def _db():
-    from app.main import get_db_connection
+    from main import get_db_connection
     return get_db_connection
+
+
+def _items(models_list) -> list:
+    return [item.model_dump() if hasattr(item, "model_dump") else item.dict() for item in models_list]
 
 
 @router.post("/signin", response_model=OtpPendingResponse)
@@ -34,11 +42,8 @@ async def signin(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(auth_service.bearer_scheme),
 ):
     """
-    Passwordless sign-in: send OTP to email.
-    Creates the user automatically if the email is new.
-
-    If Authorization Bearer token is present and still valid for the same email,
-    OTP is not sent — client should call GET /auth/me instead.
+    Passwordless sign-in: send OTP to email. Creates the user automatically if the email is new.
+    If a valid Bearer token for the same email is present, OTP is not sent — call GET /auth/me instead.
     """
     try:
         session_user = await auth_service.get_valid_session_user(credentials)
@@ -131,10 +136,7 @@ async def resend_otp(
 
 @router.post("/logout")
 async def logout(current_user: UserProfile = Depends(auth_service.get_current_user)):
-    """
-    Explicit sign-out. Invalidates the current JWT (and all prior tokens for this user).
-    Client should discard the access_token after this call.
-    """
+    """Sign out. Invalidates the current JWT and all prior tokens for this user."""
     try:
         await auth_service.logout_user(_db(), current_user.id)
         return {
@@ -156,9 +158,7 @@ async def get_me(current_user: UserProfile = Depends(auth_service.get_current_us
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    bookmarks = await auth_service.get_user_bookmarks(_db(), user["id"])
-    history = await auth_service.get_user_history(_db(), user["id"])
-
+    bookmarks, history = await auth_service.get_user_auth_data(_db(), user["id"])
     return auth_service.build_auth_response(
         user,
         bookmarks=bookmarks,
@@ -168,10 +168,8 @@ async def get_me(current_user: UserProfile = Depends(auth_service.get_current_us
 
 
 @router.get("/bookmarks")
-async def list_bookmarks(
-    current_user: UserProfile = Depends(auth_service.get_current_user),
-):
-    """List all bookmarks for the authenticated user (no pagination)."""
+async def list_bookmarks(current_user: UserProfile = Depends(auth_service.get_current_user)):
+    """List all bookmarks for the authenticated user."""
     bookmarks = await auth_service.get_user_bookmarks(_db(), current_user.id)
     return {
         "status_code": 200,
@@ -208,14 +206,11 @@ async def add_bookmarks_bulk(
     request: BulkBookmarksRequest,
     current_user: UserProfile = Depends(auth_service.get_current_user),
 ):
-    """
-    Bulk intake of bookmarks.
-    Accepts an array; each item is saved as a separate user_bookmarks row.
-    """
+    """Bulk intake of bookmarks. Each item is saved as a separate row."""
     result = await auth_service.create_app_bookmarks_bulk(
         _db(),
         user_id=current_user.id,
-        items=[item.dict() if hasattr(item, "dict") else item.model_dump() for item in request.bookmarks],
+        items=_items(request.bookmarks),
     )
     return {
         "status_code": 201,
@@ -242,10 +237,8 @@ async def remove_bookmark(
 
 
 @router.get("/history")
-async def list_history(
-    current_user: UserProfile = Depends(auth_service.get_current_user),
-):
-    """List all browsing history for the authenticated user (no pagination)."""
+async def list_history(current_user: UserProfile = Depends(auth_service.get_current_user)):
+    """List all browsing history for the authenticated user."""
     history = await auth_service.get_user_history(_db(), current_user.id)
     return {
         "status_code": 200,
@@ -289,14 +282,11 @@ async def record_history_bulk(
     request: BulkHistoryRequest,
     current_user: UserProfile = Depends(auth_service.get_current_user),
 ):
-    """
-    Bulk intake of history.
-    Accepts an array; each item is saved as a separate user_history row.
-    """
+    """Bulk intake of history. Each item is saved as a separate row."""
     result = await auth_service.create_app_history_bulk(
         _db(),
         user_id=current_user.id,
-        items=[item.dict() if hasattr(item, "dict") else item.model_dump() for item in request.history],
+        items=_items(request.history),
     )
     return {
         "status_code": 201,
@@ -326,15 +316,8 @@ async def delete_history_range(
     ),
     current_user: UserProfile = Depends(auth_service.get_current_user),
 ):
-    """
-    Delete history from `from_epoch` to now for the authenticated user.
-    Example: DELETE /auth/history/range?from_epoch=1710000000
-    """
-    result = await auth_service.delete_app_history_from_epoch(
-        _db(),
-        current_user.id,
-        from_epoch,
-    )
+    """Delete history from `from_epoch` to now. Example: DELETE /auth/history/range?from_epoch=1710000000"""
+    result = await auth_service.delete_app_history_from_epoch(_db(), current_user.id, from_epoch)
     return {
         "status_code": 200,
         "success": True,

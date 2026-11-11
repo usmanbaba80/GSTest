@@ -4,8 +4,8 @@ from typing import Optional
 
 import httpx
 
-from app.config import settings
-from app.logger import logger
+from config import settings
+from logger import logger
 
 BREVO_SEND_URL = "https://api.brevo.com/v3/smtp/email"
 
@@ -18,20 +18,14 @@ async def send_otp_email(
     to_email: str,
     otp_code: str,
     full_name: Optional[str] = None,
-    purpose: str = "verify",
+    purpose: str = "signin",
 ) -> None:
     """
-    Send an OTP email (signup verification or password reset).
-
-    Uses Brevo Transactional API (free plan is enough for OTP volume).
+    Send a sign-in OTP email via Brevo.
     If Brevo is not configured and email_otp_debug=True, logs the OTP instead.
     """
     display_name = (full_name or "there").strip() or "there"
-    if purpose == "reset":
-        subject = "Your password reset code"
-        ignore_line = "If you did not request a password reset, you can ignore this email."
-        lead = "Your password reset code is:"
-    elif purpose == "signin":
+    if purpose == "signin":
         subject = "Your sign-in code"
         ignore_line = "If you did not try to sign in, you can ignore this email."
         lead = "Your sign-in code is:"

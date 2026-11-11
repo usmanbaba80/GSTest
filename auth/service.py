@@ -1,20 +1,46 @@
 """User authentication: passwordless email OTP, JWT, bookmarks, and history."""
 
+import hmac
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from secrets import randbelow
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import aiomysql
 import jwt
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app import email_service
-from app.config import settings
-from app.models import BookmarkItem, HistoryItem, UserProfile
+import email_service
+from config import settings
+from models import BookmarkItem, HistoryItem, UserProfile
 
 bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def _db():
+    from main import get_db_connection
+    return get_db_connection
+
+
+def _jwt_secret() -> str:
+    if not settings.jwt_secret_key:
+        raise HTTPException(
+            status_code=503,
+            detail="User authentication is not configured. Set JWT_SECRET_KEY.",
+        )
+    return settings.jwt_secret_key
+
+
+def require_auth_configured() -> None:
+    """Router dependency: reject /auth calls before any OTP is sent when JWT or the database is unavailable."""
+    _jwt_secret()
+    import main
+    if main.connection_pool is None:
+        raise HTTPException(
+            status_code=503,
+            detail="User authentication is unavailable: the database is not connected.",
+        )
 
 
 def _hash_otp(otp_code: str) -> str:
@@ -40,12 +66,13 @@ def create_access_token(
         "exp": expire,
         "iat": datetime.now(timezone.utc),
     }
-    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+    return jwt.encode(payload, _jwt_secret(), algorithm=settings.jwt_algorithm)
 
 
 def decode_access_token(token: str) -> Dict[str, Any]:
+    secret = _jwt_secret()
     try:
-        return jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        return jwt.decode(token, secret, algorithms=[settings.jwt_algorithm])
     except jwt.ExpiredSignatureError as exc:
         raise HTTPException(status_code=401, detail="Token has expired. Please sign in again.") from exc
     except jwt.InvalidTokenError as exc:
@@ -135,7 +162,7 @@ def _validate_otp(user: Dict[str, Any], otp_code: str, expected_purpose: str) ->
     if datetime.now(timezone.utc) > expires_at:
         raise HTTPException(status_code=400, detail="Sign-in code expired. Request a new one.")
 
-    if _hash_otp(otp_code) != user["otp_code_hash"]:
+    if not hmac.compare_digest(_hash_otp(otp_code), user["otp_code_hash"]):
         raise HTTPException(status_code=400, detail="Invalid sign-in code")
 
 
@@ -145,7 +172,6 @@ async def get_or_create_user_by_email(get_db_connection, email: str) -> Dict[str
 
     async with get_db_connection() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
-            # Match on email only — unique_email is global
             await cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
             user = await cursor.fetchone()
             if user:
@@ -166,7 +192,7 @@ async def get_or_create_user_by_email(get_db_connection, email: str) -> Dict[str
                 await cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
                 return await cursor.fetchone()
             except Exception as exc:
-                # Concurrent sign-in can hit unique_email; re-load existing row
+                # Concurrent sign-in can hit unique_email; re-load the existing row
                 errno = exc.args[0] if getattr(exc, "args", None) else None
                 msg = str(exc).lower()
                 if errno == 1062 or "duplicate" in msg:
@@ -192,10 +218,7 @@ async def verify_signin_otp(get_db_connection, email: str, otp_code: str) -> Dic
     """Verify OTP and mark the email as signed in / verified."""
     async with get_db_connection() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
-            await cursor.execute(
-                "SELECT * FROM users WHERE email = %s",
-                (email,),
-            )
+            await cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
             user = await cursor.fetchone()
 
     if not user:
@@ -224,10 +247,7 @@ async def verify_signin_otp(get_db_connection, email: str, otp_code: str) -> Dic
 async def resend_signin_otp(get_db_connection, email: str) -> Dict[str, Any]:
     async with get_db_connection() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
-            await cursor.execute(
-                "SELECT * FROM users WHERE email = %s",
-                (email,),
-            )
+            await cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
             user = await cursor.fetchone()
 
     if not user:
@@ -258,6 +278,28 @@ async def get_user_by_id(get_db_connection, user_id: int) -> Optional[Dict[str, 
             return await cursor.fetchone()
 
 
+def _row_to_bookmark(row: Dict[str, Any]) -> BookmarkItem:
+    return BookmarkItem(
+        id=row["id"],
+        title=row.get("title"),
+        url=row["url"],
+        favicon=row.get("favicon"),
+        folder=row.get("folder"),
+        source=row.get("source") or "app",
+    )
+
+
+def _row_to_history(row: Dict[str, Any]) -> HistoryItem:
+    return HistoryItem(
+        id=row["id"],
+        title=row.get("title"),
+        url=row["url"],
+        favicon=row.get("favicon"),
+        visited_at=row["visited_at"].isoformat() if row.get("visited_at") else None,
+        source=row.get("source") or "app",
+    )
+
+
 async def get_user_bookmarks(get_db_connection, user_id: int) -> List[BookmarkItem]:
     async with get_db_connection() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
@@ -271,18 +313,7 @@ async def get_user_bookmarks(get_db_connection, user_id: int) -> List[BookmarkIt
                 (user_id,),
             )
             rows = await cursor.fetchall()
-
-    return [
-        BookmarkItem(
-            id=row["id"],
-            title=row.get("title"),
-            url=row["url"],
-            favicon=row.get("favicon"),
-            folder=row.get("folder"),
-            source=row.get("source") or "app",
-        )
-        for row in rows
-    ]
+    return [_row_to_bookmark(row) for row in rows]
 
 
 async def get_user_history(get_db_connection, user_id: int) -> List[HistoryItem]:
@@ -298,18 +329,7 @@ async def get_user_history(get_db_connection, user_id: int) -> List[HistoryItem]
                 (user_id,),
             )
             rows = await cursor.fetchall()
-
-    return [
-        HistoryItem(
-            id=row["id"],
-            title=row.get("title"),
-            url=row["url"],
-            favicon=row.get("favicon"),
-            visited_at=row["visited_at"].isoformat() if row.get("visited_at") else None,
-            source=row.get("source") or "app",
-        )
-        for row in rows
-    ]
+    return [_row_to_history(row) for row in rows]
 
 
 async def create_app_bookmark(
@@ -323,10 +343,7 @@ async def create_app_bookmark(
     async with get_db_connection() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
             await cursor.execute(
-                """
-                SELECT id FROM user_bookmarks
-                WHERE user_id = %s AND url = %s
-                """,
+                "SELECT id FROM user_bookmarks WHERE user_id = %s AND url = %s",
                 (user_id, url),
             )
             existing = await cursor.fetchone()
@@ -356,14 +373,7 @@ async def create_app_bookmark(
             )
             row = await cursor.fetchone()
 
-    return BookmarkItem(
-        id=row["id"],
-        title=row.get("title"),
-        url=row["url"],
-        favicon=row.get("favicon"),
-        folder=row.get("folder"),
-        source=row.get("source") or "app",
-    )
+    return _row_to_bookmark(row)
 
 
 async def create_app_bookmarks_bulk(
@@ -433,14 +443,7 @@ async def create_app_history_entry(
             )
             row = await cursor.fetchone()
 
-    return HistoryItem(
-        id=row["id"],
-        title=row.get("title"),
-        url=row["url"],
-        favicon=row.get("favicon"),
-        visited_at=row["visited_at"].isoformat() if row.get("visited_at") else None,
-        source=row.get("source") or "app",
-    )
+    return _row_to_history(row)
 
 
 async def create_app_history_bulk(
@@ -496,17 +499,13 @@ async def delete_app_history_entry(get_db_connection, user_id: int, history_id: 
 async def clear_app_history(get_db_connection, user_id: int) -> int:
     async with get_db_connection() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
-            await cursor.execute(
-                "DELETE FROM user_history WHERE user_id = %s",
-                (user_id,),
-            )
+            await cursor.execute("DELETE FROM user_history WHERE user_id = %s", (user_id,))
             return cursor.rowcount
 
 
 def _epoch_to_utc_datetime(epoch: int) -> datetime:
     """Accept seconds or milliseconds since epoch."""
     value = int(epoch)
-    # Values above year ~2001 in ms range
     if value > 1_000_000_000_000:
         value = value / 1000.0
     return datetime.fromtimestamp(value, tz=timezone.utc)
@@ -517,10 +516,7 @@ async def delete_app_history_from_epoch(
     user_id: int,
     from_epoch: int,
 ) -> Dict[str, Any]:
-    """
-    Delete history entries from from_epoch up to now (inclusive), for this user.
-    Uses visited_at when set, otherwise created_at.
-    """
+    """Delete history entries from from_epoch up to now (inclusive). Uses visited_at, else created_at."""
     start_at = _epoch_to_utc_datetime(from_epoch)
     end_at = datetime.now(timezone.utc)
 
@@ -551,7 +547,7 @@ async def delete_app_history_from_epoch(
     }
 
 
-async def get_user_auth_data(get_db_connection, user_id: int) -> tuple[List[BookmarkItem], List[HistoryItem]]:
+async def get_user_auth_data(get_db_connection, user_id: int) -> Tuple[List[BookmarkItem], List[HistoryItem]]:
     bookmarks = await get_user_bookmarks(get_db_connection, user_id)
     history = await get_user_history(get_db_connection, user_id)
     return bookmarks, history
@@ -592,14 +588,11 @@ async def get_current_user(
     user_id = int(payload["sub"])
     token_version = int(payload.get("tv") or 0)
 
-    from app.main import get_db_connection
-
-    user = await get_user_by_id(get_db_connection, user_id)
+    user = await get_user_by_id(_db(), user_id)
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
 
-    current_version = int(user.get("token_version") or 0)
-    if token_version != current_version:
+    if token_version != int(user.get("token_version") or 0):
         raise HTTPException(status_code=401, detail="Session expired. Please sign in again.")
 
     if not user.get("email_verified"):
@@ -611,30 +604,22 @@ async def get_current_user(
 async def get_valid_session_user(
     credentials: Optional[HTTPAuthorizationCredentials],
 ) -> Optional[Dict[str, Any]]:
-    """
-    Return the DB user row if Bearer token is a valid active session.
-    Returns None when missing/invalid (does not raise).
-    """
-    if not credentials or credentials.scheme.lower() != "bearer":
+    """Return the DB user row if the Bearer token is an active session, else None (never raises)."""
+    if not credentials or credentials.scheme.lower() != "bearer" or not settings.jwt_secret_key:
         return None
 
     try:
         payload = decode_access_token(credentials.credentials)
         user_id = int(payload["sub"])
         token_version = int(payload.get("tv") or 0)
-    except HTTPException:
-        return None
     except Exception:
         return None
 
-    from app.main import get_db_connection
-
-    user = await get_user_by_id(get_db_connection, user_id)
+    user = await get_user_by_id(_db(), user_id)
     if not user or not user.get("email_verified"):
         return None
 
-    current_version = int(user.get("token_version") or 0)
-    if token_version != current_version:
+    if token_version != int(user.get("token_version") or 0):
         return None
 
     return user

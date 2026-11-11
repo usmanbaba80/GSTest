@@ -44,9 +44,8 @@ memory-profiler>=0.61.0       # Memory usage monitoring (development)
 # prometheus-client>=0.17.1    # Metrics collection
 # structlog>=23.1.0            # Structured logging
 
+# User authentication (JWT)
+PyJWT>=2.8.0
+
 # GeoIP2 for GeoLite2 local DB lookup
 geoip2>=4.8.0
-
-# User authentication
-PyJWT>=2.8.0
-bcrypt>=4.0.1

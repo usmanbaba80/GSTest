@@ -1,6 +1,6 @@
 """Database schema initialization for user authentication."""
 
-from app.logger import logger
+from logger import logger
 
 AUTH_TABLES_SQL = [
     """
@@ -51,6 +51,7 @@ AUTH_TABLES_SQL = [
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
 ]
+
 # For existing deployments created before email verification was added
 AUTH_ALTER_SQL = [
     "ALTER TABLE users ADD COLUMN email_verified TINYINT(1) NOT NULL DEFAULT 0",
@@ -66,23 +67,19 @@ AUTH_ALTER_SQL = [
 
 async def init_auth_tables(get_db_connection):
     """Create authentication-related tables if they do not exist."""
-    try:
-        async with get_db_connection() as conn:
-            async with conn.cursor() as cursor:
-                for statement in AUTH_TABLES_SQL:
+    async with get_db_connection() as conn:
+        async with conn.cursor() as cursor:
+            for statement in AUTH_TABLES_SQL:
+                await cursor.execute(statement)
+
+            for statement in AUTH_ALTER_SQL:
+                try:
                     await cursor.execute(statement)
+                except Exception as alter_exc:
+                    # Already-migrated databases report "duplicate column"
+                    msg = str(alter_exc).lower()
+                    if "duplicate column" in msg or "exists" in msg:
+                        continue
+                    logger.warning(f"Auth schema alter skipped: {alter_exc}")
 
-                for statement in AUTH_ALTER_SQL:
-                    try:
-                        await cursor.execute(statement)
-                    except Exception as alter_exc:
-                        # Ignore "duplicate column" on already-migrated databases
-                        msg = str(alter_exc).lower()
-                        if "duplicate column" in msg or "exists" in msg:
-                            continue
-                        logger.warning(f"Auth schema alter skipped: {alter_exc}")
-
-        logger.info("✅ Authentication tables initialized")
-    except Exception as exc:
-        logger.error(f"❌ Failed to initialize authentication tables: {exc}")
-        raise
+    logger.info("✅ Authentication tables initialized")

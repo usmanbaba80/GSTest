@@ -1,1 +1,0 @@
-"""Google trending package."""
