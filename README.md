@@ -2,12 +2,31 @@
 
 A FastAPI backend service for web scraping, screenshot generation, and search functionality.
 
+## Project structure
+
+```text
+main.py                 # Thin entrypoint: uvicorn main:app
+app/
+  main.py               # FastAPI app, search, screenshots, links
+  config.py
+  models.py
+  logger.py
+  email_service.py
+  auth/                 # Email OTP sign-in, bookmarks, history
+  trending/             # Google Trending Now cache API
+  search/               # Search helpers
+  api/
+docs/
+ansible/
+```
+
 ## Features
 
-- **Search API**: Cached search results with support for different search types (general, news, images, shopping)
+- **Search API**: Cached search results with support for different search types (general, news, images, shopping, videos)
+- **Trending API**: ScrapingDog Google Trends with 24h DB cache (`GET /trending`)
+- **Auth API**: Passwordless email OTP, bookmarks, and history (`/auth/*`)
 - **Screenshot Service**: Web page screenshot generation with automatic slicing and cloud storage using optimized browser pool management
 - **Link Extraction**: Extract all links from web pages
-
 - **Cloud Storage**: Automatic upload to Contabo S3-compatible storage
 
 ## Security Improvements
@@ -67,7 +86,7 @@ BROWSER_HEADLESS=true
 ### 4. Run the Application
 
 ```bash
-uvicorn GS_main:app --reload --host 0.0.0.0 --port 8000
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ## API Endpoints
@@ -78,9 +97,18 @@ GET /search
 ```
 **Parameters:**
 - `query` (string): Search query (1-500 characters)
-- `searchType` (string): Type of search - general, nws, isch, shop
+- `searchType` (string): Type of search - general, nws, isch, shop, videos
 - `start` (int): Start index for pagination (0-1000)
 - `limit` (int): Number of results (1-100)
+
+### Trending API
+```
+GET /trending?geo=US&limit=4
+```
+Caches top 10 Google Trends per geo for 24 hours and returns a random subset.
+
+### Auth / Bookmarks / History
+See `docs/AUTH_API.md`.
 
 ### Screenshot API
 ```

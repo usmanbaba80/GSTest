@@ -4,8 +4,8 @@ from typing import Optional
 
 import httpx
 
-from config import settings
-from logger import logger
+from app.config import settings
+from app.logger import logger
 
 BREVO_SEND_URL = "https://api.brevo.com/v3/smtp/email"
 

@@ -6,9 +6,9 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.security import HTTPAuthorizationCredentials
 
-from auth import service as auth_service
-from logger import logger
-from models import (
+from app.auth import service as auth_service
+from app.logger import logger
+from app.models import (
     AuthResponse,
     BulkBookmarksRequest,
     BulkHistoryRequest,
@@ -28,7 +28,7 @@ router = APIRouter(
 
 
 def _db():
-    from main import get_db_connection
+    from app.main import get_db_connection
     return get_db_connection
 
 

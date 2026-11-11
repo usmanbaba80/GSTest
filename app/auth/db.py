@@ -1,6 +1,6 @@
 """Database schema initialization for user authentication."""
 
-from logger import logger
+from app.logger import logger
 
 AUTH_TABLES_SQL = [
     """

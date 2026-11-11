@@ -36,9 +36,9 @@ class SearchRequest(BaseModel):
         max_length=500,
         description="Search query (1-500 characters)"
     )
-    searchType: Literal['general', 'nws', 'isch', 'shop'] = Field(
+    searchType: Literal['general', 'nws', 'isch', 'shop', 'videos'] = Field(
         ...,
-        description="Type of search: general, nws (news), isch (images), shop (shopping)"
+        description="Type of search: general, nws (news), isch (images), shop (shopping), videos (YouTube)"
     )
     start: int = Field(
         default=0, 

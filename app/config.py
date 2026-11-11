@@ -1,9 +1,14 @@
 import re
+from pathlib import Path
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_ENV_FILE = _PROJECT_ROOT / ".env"
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -110,19 +115,31 @@ class Settings(BaseSettings):
     scrapingdog_url_images: str = "https://api.scrapingdog.com/google_images/"
     scrapingdog_url_shopping: str = "https://api.scrapingdog.com/google_shopping/"
     scrapingdog_url_news: str = "https://api.scrapingdog.com/google_news/"
+    scrapingdog_url_videos: str = "https://api.scrapingdog.com/youtube/search"
+    scrapingdog_url_trending_now: str = "https://api.scrapingdog.com/google_trends/trending_now"
+
+    # Google Trending Now cache (ScrapingDog)
+    trending_cache_hours: int = 24
+    trending_store_count: int = 10
+    trending_serve_count: int = 4
+    trending_default_geo: str = "US"
+    trending_hours: str = "24"  # ScrapingDog hours filter: 4, 24, 48, 168
+    trending_language: str = "en"
 
     # Per-search-type provider. Values: brightdata | scrapingdog.
-    # Defaults keep the current routing: Bright Data for general/images/news, ScrapingDog for shop.
+    # Defaults: ScrapingDog for general/images/shop/videos, Bright Data for news.
     search_provider_general: str = "scrapingdog"
     search_provider_isch: str = "scrapingdog"
     search_provider_nws: str = "brightdata"
     search_provider_shop: str = "scrapingdog"
+    search_provider_videos: str = "scrapingdog"
 
     @field_validator(
         "search_provider_general",
         "search_provider_isch",
         "search_provider_nws",
         "search_provider_shop",
+        "search_provider_videos",
         mode="before",
     )
     @classmethod
@@ -147,13 +164,14 @@ class Settings(BaseSettings):
             "isch": self.search_provider_isch,
             "nws": self.search_provider_nws,
             "shop": self.search_provider_shop,
+            "videos": self.search_provider_videos,
         }
         return providers.get(search_type, self.search_provider_general)
 
     def search_types_for_provider(self, provider: str) -> List[str]:
         return [
             search_type
-            for search_type in ("general", "isch", "nws", "shop")
+            for search_type in ("general", "isch", "nws", "shop", "videos")
             if self.provider_for(search_type) == provider
         ]
     
@@ -223,8 +241,9 @@ class Settings(BaseSettings):
     geolite2_db_path: Optional[str] = "GeoLite2-Country.mmdb"  # e.g., /usr/local/share/GeoIP/GeoLite2-Country.mmdb
     
     class Config:
-        env_file = ".env"
+        env_file = str(_ENV_FILE)
         case_sensitive = False
+        extra = "ignore"
 
 # Global settings instance
 settings = Settings() 

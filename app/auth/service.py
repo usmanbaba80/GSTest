@@ -11,15 +11,15 @@ import jwt
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-import email_service
-from config import settings
-from models import BookmarkItem, HistoryItem, UserProfile
+import app.email_service as email_service
+from app.config import settings
+from app.models import BookmarkItem, HistoryItem, UserProfile
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def _db():
-    from main import get_db_connection
+    from app.main import get_db_connection
     return get_db_connection
 
 
@@ -35,7 +35,7 @@ def _jwt_secret() -> str:
 def require_auth_configured() -> None:
     """Router dependency: reject /auth calls before any OTP is sent when JWT or the database is unavailable."""
     _jwt_secret()
-    import main
+    import app.main as main
     if main.connection_pool is None:
         raise HTTPException(
             status_code=503,
